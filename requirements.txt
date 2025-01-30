@@ -3,3 +3,4 @@ uvicorn
 requests
 langchain-google-genai
 python-multipart
+iqoption==6.8.9.1
