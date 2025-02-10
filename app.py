@@ -186,7 +186,7 @@ def signal(pair, ofset, pro):
         max_tokens=None,
         timeout=None,
         max_retries=2,
-        pro=pro
+        google_api_key=pro
     )
 
     headers = {
