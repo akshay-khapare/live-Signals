@@ -9,7 +9,7 @@
 #     max_tokens=None,
 #     timeout=None,
 #     max_retries=2,
-#     google_api_key='AIzaSyCH0lltb7Gs31c0zoLlljI4UIeDo2mb1cc'
+#     pro='AIzaSyCH0lltb7Gs31c0zoLlljI4UIeDo2mb1cc'
 #     # other params...
 # )
 
@@ -178,7 +178,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-def signal(pair, ofset, google_api_key):
+def signal(pair, ofset, pro):
     # Create LLM instance with the provided API key
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.0-flash",
@@ -186,7 +186,7 @@ def signal(pair, ofset, google_api_key):
         max_tokens=None,
         timeout=None,
         max_retries=2,
-        google_api_key=google_api_key
+        pro=pro
     )
 
     headers = {
@@ -273,14 +273,14 @@ def signal(pair, ofset, google_api_key):
 async def get_trading_signal(
     pair: str = Query(..., description="Trading pair (e.g., EUR_USD)"),
     offset: int = Query(15, description="Number of candles to analyze", ge=1, le=100),
-    google_api_key: str = Query(..., description="Google API Key for Gemini AI")
+    pro: str = Query(..., description="Google API Key for Gemini AI")
 ):
     """
     Retrieve a trading signal for a given currency pair.
     
     - **pair**: The trading pair to analyze (e.g., EUR_USD)
     - **offset**: Number of candles to analyze (default: 15, min: 1, max: 100)
-    - **google_api_key**: Google API Key for Gemini AI
+    - **pro**: Google API Key for Gemini AI
     
     Returns:
     - CALL: Upward movement predicted
@@ -288,7 +288,7 @@ async def get_trading_signal(
     - NEUTRAL: No clear direction
     """
     try:
-        return signal(pair, offset, google_api_key)
+        return signal(pair, offset, pro)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
