@@ -181,7 +181,7 @@ app.add_middleware(
 def signal(pair, ofset, pro):
     # Create LLM instance with the provided API key
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model="gemini-2.0-flash-thinking-exp-01-21",
         temperature=0,
         max_tokens=None,
         timeout=None,
