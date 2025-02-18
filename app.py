@@ -134,7 +134,9 @@ def signal(pair):
 
     dir= dir1 if (dir11 == dir12 == dir13 == dir21 ==dir22==dir23==dir51==dir52==dir53) else "NEUTRAL"
     return dir
-
+@app.get("/")
+def home():
+    return {"message": "API is working!"}
 @app.get("/trading-signal", response_model=str, summary="Get Trading Signal")
 async def get_trading_signal(
     pair: str = Query(..., description="Trading pair (e.g., EUR_USD)"),
