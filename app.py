@@ -1,13 +1,11 @@
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import requests
+import xgboost as xgb
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+import numpy as np
 
 app = FastAPI(title="Trading Signal API")
-
 # Add CORS middleware to allow cross-origin requests
 app.add_middleware(
     CORSMiddleware,
@@ -17,10 +15,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+
+# Initialize H2O (lightweight mode)
 
 def predict_next_candle(candles, window_size=10):
     df = pd.DataFrame(candles)
@@ -31,6 +27,9 @@ def predict_next_candle(candles, window_size=10):
     # Define target: 1 for Up, -1 for Down, 0 for Neutral
     df['direction'] = df.apply(lambda row: 1 if row['close'] > row['open'] else (-1 if row['close'] < row['open'] else 0), axis=1)
 
+    # Map the direction to [0, 1, 2]
+    df['direction'] = df['direction'].map({-1: 0, 0: 1, 1: 2})
+
     # Feature Engineering
     for i in range(1, window_size + 1):
         df[f'prev_close_{i}'] = df['close'].shift(i)
@@ -39,32 +38,36 @@ def predict_next_candle(candles, window_size=10):
     # Drop NaN values from shifting
     df.dropna(inplace=True)
 
-    # Split data into train & test
-    X = df.drop(columns=['time', 'direction'])
-    y = df['direction']
+    # Define features and target
+    features = [col for col in df.columns if col not in ['time', 'direction']]
+    target = 'direction'
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+    # Manually split data (80% train, 20% test)
+    train_size = int(len(df) * 0.8)
+    train_df = df[:train_size]
+    test_df = df[train_size:]
 
-    # Train Model
-    model = RandomForestClassifier(n_estimators=10, max_depth=5, random_state=42)
+    # Split features and target for train and test
+    X_train = train_df[features].values
+    y_train = train_df[target].values
+    X_test = test_df[features].values
+    y_test = test_df[target].values
+
+    # Train XGBoost Model
+    model = xgb.XGBClassifier(n_estimators=10, max_depth=5, use_label_encoder=False)
     model.fit(X_train, y_train)
 
-    # Predict and evaluate
-    y_pred = model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
     # Predict next candle
-    last_candle_features = X.iloc[-1].values.reshape(1, -1)
+    last_candle_features = X_test[-1].reshape(1, -1)
     next_direction = model.predict(last_candle_features)[0]
 
-    # Convert prediction to readable output
-    if next_direction == 1:
+    # Map prediction back to [-1, 0, 1]
+    if next_direction == 2:
         return 'CALL'
-    elif next_direction == -1:
+    elif next_direction == 0:
         return 'PUT'
     else:
         return 'NEUTRAL'
-
-
 
 def signal(pair):
     headers = {
@@ -156,7 +159,7 @@ async def get_trading_signal(
     try:
         return signal(pair)
     except Exception as e:
-        raise HTTPException(status_code=500, detail='error occured')
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
