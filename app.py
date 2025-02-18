@@ -18,6 +18,20 @@ app.add_middleware(
 
 # Initialize H2O (lightweight mode)
 
+class SimpleDecisionTree:
+    def __init__(self):
+        self.threshold = None
+        self.label = None
+
+    def fit(self, X, y):
+        """ A simple 1-feature decision tree for classification """
+        self.threshold = np.median(X[:, 0])  # Take median of the first feature
+        self.label = np.sign(np.mean(y))  # Majority class
+
+    def predict(self, X):
+        """ Predict based on the simple threshold """
+        return np.where(X[:, 0] > self.threshold, self.label, -self.label)
+
 def predict_next_candle(candles, window_size=10):
     df = pd.DataFrame(candles)
 
@@ -26,9 +40,6 @@ def predict_next_candle(candles, window_size=10):
 
     # Define target: 1 for Up, -1 for Down, 0 for Neutral
     df['direction'] = df.apply(lambda row: 1 if row['close'] > row['open'] else (-1 if row['close'] < row['open'] else 0), axis=1)
-
-    # Map the direction to [0, 1, 2]
-    df['direction'] = df['direction'].map({-1: 0, 0: 1, 1: 2})
 
     # Feature Engineering
     for i in range(1, window_size + 1):
@@ -51,20 +62,19 @@ def predict_next_candle(candles, window_size=10):
     X_train = train_df[features].values
     y_train = train_df[target].values
     X_test = test_df[features].values
-    y_test = test_df[target].values
 
-    # Train XGBoost Model
-    model = xgb.XGBClassifier(n_estimators=10, max_depth=5, use_label_encoder=False)
+    # Train the simple decision tree
+    model = SimpleDecisionTree()
     model.fit(X_train, y_train)
 
     # Predict next candle
     last_candle_features = X_test[-1].reshape(1, -1)
     next_direction = model.predict(last_candle_features)[0]
 
-    # Map prediction back to [-1, 0, 1]
-    if next_direction == 2:
+    # Convert prediction to readable output
+    if next_direction == 1:
         return 'CALL'
-    elif next_direction == 0:
+    elif next_direction == -1:
         return 'PUT'
     else:
         return 'NEUTRAL'
@@ -124,7 +134,7 @@ def signal(pair):
                 'min': m['mid']['l']
             }
             data5.append(f)
-
+    # data1.reverse()
     dir11=predict_next_candle(data1,3)
     dir12=predict_next_candle(data1,7)
     dir13=predict_next_candle(data1,14)
@@ -136,7 +146,7 @@ def signal(pair):
     dir53=predict_next_candle(data5,14)
 
     dir= dir11 if (dir11 == dir12 == dir13 == dir21 ==dir22==dir23==dir51==dir52==dir53) else "NEUTRAL"
-    return dir11
+    return dir22
 @app.get("/")
 def home():
     return {"message": "API is working!"}
