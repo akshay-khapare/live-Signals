@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 requests
-langchain-google-genai
+scikit-learn
+pandas
 python-multipart
 iqoption==6.8.9.1
