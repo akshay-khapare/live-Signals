@@ -145,7 +145,7 @@ def signal(pair):
     dir53=predict_next_candle(data5,14)
 
     dir= dir11 if (dir11 == dir12 == dir13 == dir21 ==dir22==dir23==dir51==dir52==dir53) else "NEUTRAL"
-    return dir22
+    return dir
 @app.get("/")
 def home():
     return {"message": "API is working!"}
