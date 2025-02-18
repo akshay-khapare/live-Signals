@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import requests
 import pandas as pd
 import numpy as np
+from fastapi.responses import PlainTextResponse
 
 app = FastAPI(title="Trading Signal API")
 # Add CORS middleware to allow cross-origin requests
@@ -166,9 +167,9 @@ async def get_trading_signal(
     - NEUTRAL: No clear direction
     """
     try:
-        return signal(pair)
+        return {"signal":signal(pair)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) 
 
 if __name__ == "__main__":
     import uvicorn
