@@ -1,22 +1,11 @@
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 import requests
 import pandas as pd
 import numpy as np
-from fastapi.responses import PlainTextResponse
 
-app = FastAPI(title="Trading Signal API")
-# Add CORS middleware to allow cross-origin requests
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
-)
-
-
-# Initialize H2O (lightweight mode)
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all domains
 
 class SimpleDecisionTree:
     def __init__(self):
@@ -34,143 +23,88 @@ class SimpleDecisionTree:
 
 def predict_next_candle(candles, window_size=10):
     df = pd.DataFrame(candles)
-
-    # Convert necessary columns to float
     df[['open', 'close', 'max', 'min']] = df[['open', 'close', 'max', 'min']].astype(float)
 
-    # Define target: 1 for Up, -1 for Down, 0 for Neutral
     df['direction'] = df.apply(lambda row: 1 if row['close'] > row['open'] else (-1 if row['close'] < row['open'] else 0), axis=1)
 
-    # Feature Engineering
     for i in range(1, window_size + 1):
         df[f'prev_close_{i}'] = df['close'].shift(i)
         df[f'prev_volume_{i}'] = df['volume'].shift(i)
 
-    # Drop NaN values from shifting
     df.dropna(inplace=True)
 
-    # Define features and target
     features = [col for col in df.columns if col not in ['time', 'direction']]
     target = 'direction'
 
-    # Manually split data (80% train, 20% test)
     train_size = int(len(df) * 0.8)
     train_df = df[:train_size]
     test_df = df[train_size:]
 
-    # Split features and target for train and test
     X_train = train_df[features].values
     y_train = train_df[target].values
     X_test = test_df[features].values
 
-    # Train the simple decision tree
     model = SimpleDecisionTree()
     model.fit(X_train, y_train)
 
-    # Predict next candle
     last_candle_features = X_test[-1].reshape(1, -1)
     next_direction = model.predict(last_candle_features)[0]
 
-    # Convert prediction to readable output
-    if next_direction == 1:
-        return 'CALL'
-    elif next_direction == -1:
-        return 'PUT'
-    else:
-        return 'NEUTRAL'
+    return 'CALL' if next_direction == 1 else 'PUT' if next_direction == -1 else 'NEUTRAL'
 
 def signal(pair):
-    headers = {
-        'Authorization': 'Bearer 8874b89990ef31aa9fd85b4e3765f222-b4f234623b1f9f383de395ea4910ff6a'
-    }
-
+    headers = {'Authorization': 'Bearer 8874b89990ef31aa9fd85b4e3765f222-b4f234623b1f9f383de395ea4910ff6a'}
+    
     url_hist1 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M1&count=100'
     url_hist2 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M2&count=100'
     url_hist5 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M5&count=100'
 
-    response1 = requests.get(url_hist1, headers=headers)
-    response2 = requests.get(url_hist2, headers=headers)
-    response5 = requests.get(url_hist5, headers=headers)
-    f1 = response1.json()
-    f2 = response2.json()
-    f5 = response5.json()
-    
-    data1 = []
-    data2 = []
-    data5 = []
-    
-    for m in f1['candles']:
-        if m['complete']:
-            f = {
-                'time': m['time'],
-                'volume': m['volume'],
-                'open': m['mid']['o'],
-                'close': m['mid']['c'],
-                'max': m['mid']['h'],
-                'min': m['mid']['l']
-            }
-            data1.append(f)
+    response1 = requests.get(url_hist1, headers=headers).json()
+    response2 = requests.get(url_hist2, headers=headers).json()
+    response5 = requests.get(url_hist5, headers=headers).json()
 
-    for m in f2['candles']:
-        if m['complete']:
-            f = {
-                'time': m['time'],
-                'volume': m['volume'],
-                'open': m['mid']['o'],
-                'close': m['mid']['c'],
-                'max': m['mid']['h'],
-                'min': m['mid']['l']
-            }
-            data2.append(f)
+    data1 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
+              'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
+             for m in response1['candles'] if m['complete']]
 
-    for m in f5['candles']:
-        if m['complete']:
-            f = {
-                'time': m['time'],
-                'volume': m['volume'],
-                'open': m['mid']['o'],
-                'close': m['mid']['c'],
-                'max': m['mid']['h'],
-                'min': m['mid']['l']
-            }
-            data5.append(f)
-    # data1.reverse()
-    dir11=predict_next_candle(data1,3)
-    dir12=predict_next_candle(data1,7)
-    dir13=predict_next_candle(data1,14)
-    dir21=predict_next_candle(data2,3)
-    dir22=predict_next_candle(data2,7)
-    dir23=predict_next_candle(data2,14)
-    dir51=predict_next_candle(data5,3)
-    dir52=predict_next_candle(data5,7)
-    dir53=predict_next_candle(data5,14)
+    data2 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
+              'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
+             for m in response2['candles'] if m['complete']]
 
-    dir= dir11 if (dir11 == dir12 == dir13 == dir21 ==dir22==dir23==dir51==dir52==dir53) else "NEUTRAL"
+    data5 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
+              'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
+             for m in response5['candles'] if m['complete']]
+
+    dir11 = predict_next_candle(data1, 3)
+    dir12 = predict_next_candle(data1, 7)
+    dir13 = predict_next_candle(data1, 14)
+    dir21 = predict_next_candle(data2, 3)
+    dir22 = predict_next_candle(data2, 7)
+    dir23 = predict_next_candle(data2, 14)
+    dir51 = predict_next_candle(data5, 3)
+    dir52 = predict_next_candle(data5, 7)
+    dir53 = predict_next_candle(data5, 14)
+
+    dir = dir11 if (dir11 == dir12 == dir13 == dir21 == dir22 == dir23 == dir51 == dir52 == dir53) else "NEUTRAL"
     return dir
-@app.get("/")
+
+@app.route("/")
 def home():
-    return {"message": "API is working!"}
-@app.get("/trading-signal", response_model=str, summary="Get Trading Signal")
-async def get_trading_signal(
-    pair: str = Query(..., description="Trading pair (e.g., EUR_USD)"),
-):
-    """
-    Retrieve a trading signal for a given currency pair.
-    
-    - **pair**: The trading pair to analyze (e.g., EUR_USD)
-    - **offset**: Number of candles to analyze (default: 15, min: 1, max: 100)
-    - **pro**: Google API Key for Gemini AI
-    
-    Returns:
-    - CALL: Upward movement predicted
-    - PUT: Downward movement predicted
-    - NEUTRAL: No clear direction
-    """
+    return jsonify({"message": "API is working!"})
+
+@app.route("/trading-signal", methods=["GET"])
+def get_trading_signal():
     try:
-        return {"signal":signal(pair)}
+        pair = request.args.get("pair")
+        if not pair:
+            return jsonify({"error": "Missing 'pair' parameter"}), 400
+        
+        dir = signal(pair)
+        data={"pair": pair, "signal": dir}
+        return jsonify(data)
+    
     except Exception as e:
-        raise HTTPException(status_code=500, detail='error occurred') 
+        return jsonify({"error": "An error occurred", "details": str(e)}), 500
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000)

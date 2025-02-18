@@ -1,5 +1,5 @@
-fastapi
-uvicorn
+flask
+flask_cors
 requests
 numpy
 pandas
