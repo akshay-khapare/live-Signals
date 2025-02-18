@@ -169,7 +169,7 @@ async def get_trading_signal(
     try:
         return {"signal":signal(pair)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail='error occurred') 
 
 if __name__ == "__main__":
     import uvicorn
