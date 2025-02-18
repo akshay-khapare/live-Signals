@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import requests
-import xgboost as xgb
 import pandas as pd
 import numpy as np
 
