@@ -84,7 +84,7 @@ def process_candles(candles, window_size=10):
 
         # **Multi-Period Moving Averages**
         ma_volumes = [sum([int(c['volume']) for c in candles[i:i+period]]) / len(candles[i:i+period])
-                      for period in [5, 10, 20] if i + period <= len(candles)]
+                      for period in [2, 5, 7] if i + period <= len(candles)]
         ma_volume = np.mean(ma_volumes) if ma_volumes else np.mean(volumes)
         ma_price = np.mean(close_prices)
 
