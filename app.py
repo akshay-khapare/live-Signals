@@ -141,14 +141,17 @@ def signal(pair):
     dir11 = predict_next_candle(data1, 3)
     dir12 = predict_next_candle(data1, 7)
     dir13 = predict_next_candle(data1, 14)
+    dir14 = predict_next_candle(data1, 24)
     dir21 = predict_next_candle(data2, 3)
     dir22 = predict_next_candle(data2, 7)
     dir23 = predict_next_candle(data2, 14)
+    dir24 = predict_next_candle(data2, 24)
     dir51 = predict_next_candle(data5, 3)
     dir52 = predict_next_candle(data5, 7)
     dir53 = predict_next_candle(data5, 14)
+    dir54 = predict_next_candle(data5, 24)
 
-    dir = dir11 if (dir11 == dir12 == dir13 == dir21 == dir22 == dir23 == dir51 == dir52 == dir53) else "NEUTRAL"
+    dir = dir11 if (dir11 == dir12 == dir13 ==dir14== dir21 == dir22 == dir23 == dir24== dir51 == dir52 == dir53 ==dir54) else "NEUTRAL"
     return dir
 
 @app.route("/")
