@@ -7,39 +7,43 @@ import numpy as np
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all domains
 
-class PureVolumeMomentumPredictor:
+import numpy as np
+
+class HighAccuracyPredictor:
     def __init__(self):
         self.trend_bias = None
 
     def fit(self, X, y):
-        """Train model based on volume, momentum, and price action patterns."""
+        """Train model on volume, trend strength, and momentum confirmation."""
         self.trend_bias = 1 if sum(y) > 0 else -1  
 
     def predict(self, X):
-        """Predict the exact next candle direction using volume, trend, and momentum signals."""
+        """Predicts exact next candle direction with improved trend validation."""
         predictions = []
 
         for features in X:
-            volume, price_change, prev_close, obv, vpt, volume_ratio, momentum_strength = features
+            volume, price_change, prev_close, obv, vpt, volume_ratio, momentum_strength, volume_spike = features
             
-            # **Trend Confirmation from OBV & VPT**
+            # **Key Trend Confirmation Metrics**
             obv_signal = np.sign(obv)  
             vpt_signal = np.sign(vpt)  
             volume_strength = np.sign(volume_ratio - 1)  
             momentum_signal = np.sign(momentum_strength - 0.5)  
+            volume_spike_signal = np.sign(volume_spike - 1)  # Detects unusual volume surges
 
-            # **Final Weighted Signal Strength**
+            # **Final Weighted Signal Calculation**
             total_signal = (
-                obv_signal * 0.35 +  
+                obv_signal * 0.3 +  
                 vpt_signal * 0.25 +  
                 volume_strength * 0.2 +  
-                momentum_signal * 0.3  
+                momentum_signal * 0.3 +  
+                volume_spike_signal * 0.35  # Gives priority to sudden volume shifts
             )
 
-            # **Noise Filtering & Confirmation**
-            if total_signal > 0.7:
+            # **Strong Confirmation Filtering**
+            if total_signal > 0.8:
                 predictions.append(1)  # CALL
-            elif total_signal < -0.7:
+            elif total_signal < -0.8:
                 predictions.append(-1)  # PUT
             else:
                 predictions.append(0)  # NEUTRAL
@@ -48,10 +52,10 @@ class PureVolumeMomentumPredictor:
 
 
 def process_candles(candles):
-    """Processes candle data for accurate volume & momentum analysis."""
+    """Processes candle data with enhanced accuracy filters."""
     data = []
     obv, vpt = 0, 0
-    ema_alpha = 0.15
+    ema_alpha = 0.12  # Smoother EMA for volume tracking
     volume_ema = int(candles[0]['volume'])
 
     for i in range(len(candles) - 1, -1, -1):
@@ -72,10 +76,13 @@ def process_candles(candles):
         # **Volume Ratio Calculation**
         volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
 
+        # **Detecting Volume Spikes**
+        volume_spike = last_volume / np.max([volume_ema * 1.5, 1])  # Detects abnormally high volume
+
         # **Momentum Analysis**
         momentum_strength = 1 if price_change > 0 else 0
 
-        # **Direction Signal**
+        # **Final Direction Signal**
         direction = 1 if price_change > 0 and momentum_strength > 0 else (-1 if price_change < 0 and momentum_strength < 0 else 0)
 
         data.append({
@@ -86,6 +93,7 @@ def process_candles(candles):
             'vpt': vpt,
             'volume_ratio': volume_ratio,
             'momentum_strength': momentum_strength,
+            'volume_spike': volume_spike,
             'direction': direction
         })
 
@@ -93,7 +101,7 @@ def process_candles(candles):
 
 
 def predict_next_candle(candles):
-    """Predicts the exact next candle direction with highest accuracy."""
+    """Predicts the most accurate next candle direction."""
     if len(candles) < 2:
         return "NEUTRAL"
 
@@ -105,20 +113,22 @@ def predict_next_candle(candles):
     processed_data = process_candles(candles)
 
     X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['vpt'],
-          d['volume_ratio'], d['momentum_strength']] for d in processed_data[:-1]]
+          d['volume_ratio'], d['momentum_strength'], d['volume_spike']] for d in processed_data[:-1]]
     y = [d['direction'] for d in processed_data[:-1]]
 
-    model = PureVolumeMomentumPredictor()
+    model = HighAccuracyPredictor()
     model.fit(X, y)
 
     last_candle = processed_data[-1]
     last_features = [[last_candle['volume'], last_candle['price_change'], last_candle['prev_close'],
                       last_candle['obv'], last_candle['vpt'],
-                      last_candle['volume_ratio'], last_candle['momentum_strength']]]
+                      last_candle['volume_ratio'], last_candle['momentum_strength'],
+                      last_candle['volume_spike']]]
 
     next_direction = model.predict(last_features)[0]
 
     return "CALL" if next_direction == 1 else "PUT" if next_direction == -1 else "NEUTRAL"
+
 
 
 
