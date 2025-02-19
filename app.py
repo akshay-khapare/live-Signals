@@ -11,44 +11,48 @@ class AdvancedVolumePredictor:
         self.trend_bias = None
 
     def fit(self, X, y):
-        """Train the model to detect dominant trends from multiple volume indicators."""
+        """Train model to detect dominant market trends."""
         total_trend = sum(y)
-        self.trend_bias = 1 if total_trend > 0 else -1  # Overall Market Direction
+        self.trend_bias = 1 if total_trend > 0 else -1  
 
     def predict(self, X):
-        """Predict next candle direction using combined volume indicators."""
+        """Predicts next candle direction using multiple volume indicators."""
         predictions = []
 
         for features in X:
-            volume, price_change, prev_close, obv, nvi, pvi, vpt, volume_ratio = features
+            volume, price_change, prev_close, obv, nvi, pvi, vpt, volume_ratio, ma_volume, ma_price = features
 
-            # **Trend Strength Calculation**
-            obv_signal = 1 if obv > 0 else -1
-            vpt_signal = 1 if vpt > 0 else -1
-            pvi_signal = 1 if pvi > nvi else -1
-            trend_strength = obv_signal + vpt_signal + pvi_signal  # Combine strengths
+            # **Trend Confirmation Signals**
+            obv_signal = 1 if obv > 0 else -1 if obv < 0 else 0
+            vpt_signal = 1 if vpt > 0 else -1 if vpt < 0 else 0
+            pvi_signal = 1 if pvi > nvi else -1 if pvi < nvi else 0
 
-            # **Neutral Condition Check**
-            price_change_threshold = 0.0005 * prev_close  # 0.05% price change filter
-            volume_threshold = 0.015 * volume  # 1.5% volume change filter
+            trend_signals = [obv_signal, vpt_signal, pvi_signal]
+            positive_signals = sum(1 for sig in trend_signals if sig == 1)
+            negative_signals = sum(1 for sig in trend_signals if sig == -1)
+
+            # **Adjust Neutral Condition**
+            price_change_threshold = 0.0003 * ma_price  # 0.03% of MA price
+            volume_threshold = 0.01 * ma_volume  # 1% of MA volume
 
             if abs(price_change) < price_change_threshold and abs(vpt) < volume_threshold:
                 predictions.append(0)  # NEUTRAL
-            elif trend_strength >= 2 and volume_ratio > 1:
-                predictions.append(1)  # CALL (Strong Uptrend)
-            elif trend_strength <= -2 and volume_ratio < 1:
-                predictions.append(-1)  # PUT (Strong Downtrend)
+            elif positive_signals >= 2 and volume_ratio > 0.95:
+                predictions.append(1)  # CALL (Uptrend)
+            elif negative_signals >= 2 and volume_ratio < 1.05:
+                predictions.append(-1)  # PUT (Downtrend)
             else:
-                predictions.append(self.trend_bias)  # Follow general market trend
+                predictions.append(0)  # NEUTRAL (Balanced Trend Signals)
 
         return predictions
 
+
 def process_candles(candles, window_size=10):
-    """Extracts OBV, NVI, PVI, VPT, and Volume Ratio for enhanced accuracy."""
+    """Extracts OBV, NVI, PVI, VPT, and Volume Ratio."""
     data = []
     obv, nvi, pvi, vpt = 0, 1000, 1000, 0  
 
-    for i in range(len(candles) - window_size - 1, -1, -1):  # Process bottom to top
+    for i in range(len(candles) - window_size - 1, -1, -1):  
         window = candles[i:i + window_size]
 
         close_prices = [float(c['close']) for c in window]
@@ -58,17 +62,16 @@ def process_candles(candles, window_size=10):
         price_change = close_prices[-1] - close_prices[-2]
         prev_close = close_prices[-2]
 
-        # **Calculate OBV, NVI, PVI, and VPT**
         obv = obv + last_volume if price_change > 0 else obv - last_volume
         nvi = nvi * (1 + (price_change / prev_close)) if last_volume < prev_close else nvi
         pvi = pvi * (1 + (price_change / prev_close)) if last_volume > prev_close else pvi
         vpt = vpt + (price_change / prev_close) * last_volume
 
-        # **Volume Ratio: Compare Current Volume with Previous Average**
         avg_volume = sum(volumes[:-1]) / len(volumes[:-1])
+        ma_volume = sum(volumes) / len(volumes)  # Moving average volume
+        ma_price = sum(close_prices) / len(close_prices)  # Moving average price
         volume_ratio = last_volume / avg_volume if avg_volume != 0 else 1
 
-        # **Determine Candle Direction**
         direction = 1 if price_change > 0 else (-1 if price_change < 0 else 0)
 
         data.append({
@@ -80,13 +83,15 @@ def process_candles(candles, window_size=10):
             'pvi': pvi,
             'vpt': vpt,
             'volume_ratio': volume_ratio,
+            'ma_volume': ma_volume,
+            'ma_price': ma_price,
             'direction': direction
         })
 
-    return data[::-1]  # Reverse to keep recent candles at bottom
+    return data[::-1]  
 
 def predict_next_candle(candles, window_size=10):
-    """Predicts next candle using a highly accurate volume-based strategy."""
+    """Predicts next candle using an advanced volume-based strategy."""
     if len(candles) < window_size + 1:
         return "NEUTRAL"
 
@@ -97,7 +102,7 @@ def predict_next_candle(candles, window_size=10):
 
     processed_data = process_candles(candles, window_size)
 
-    X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['nvi'], d['pvi'], d['vpt'], d['volume_ratio']]
+    X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['nvi'], d['pvi'], d['vpt'], d['volume_ratio'], d['ma_volume'], d['ma_price']]
          for d in processed_data[:-1]]
     y = [d['direction'] for d in processed_data[:-1]]
 
@@ -106,11 +111,13 @@ def predict_next_candle(candles, window_size=10):
 
     last_candle = processed_data[-1]
     last_features = [[last_candle['volume'], last_candle['price_change'], last_candle['prev_close'],
-                      last_candle['obv'], last_candle['nvi'], last_candle['pvi'], last_candle['vpt'], last_candle['volume_ratio']]]
+                      last_candle['obv'], last_candle['nvi'], last_candle['pvi'], last_candle['vpt'], last_candle['volume_ratio'],
+                      last_candle['ma_volume'], last_candle['ma_price']]]
 
     next_direction = model.predict(last_features)[0]
 
     return "CALL" if next_direction == 1 else "PUT" if next_direction == -1 else "NEUTRAL"
+
 
 
 
@@ -148,7 +155,7 @@ def signal(pair):
     dir53 = predict_next_candle(data5, 14)
 
     dir = dir11 if (dir11 == dir12 == dir13 == dir21 == dir22 == dir23 == dir51 == dir52 == dir53) else "NEUTRAL"
-    return dir
+    return dir11
 
 @app.route("/")
 def home():
