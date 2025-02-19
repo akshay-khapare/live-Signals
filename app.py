@@ -148,7 +148,7 @@ def predict_next_candle(candles, window_size=10):
 def signal(pair,offset,minute):
     headers = {'Authorization': 'Bearer 8874b89990ef31aa9fd85b4e3765f222-b4f234623b1f9f383de395ea4910ff6a'}
     
-    url_hist1 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M{minute}&count=100'
+    url_hist1 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M{minute}&count={offset+1}'
 
     response1 = requests.get(url_hist1, headers=headers).json()
 
