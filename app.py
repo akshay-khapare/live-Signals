@@ -225,7 +225,7 @@ def home():
 def get_trading_signal():
     try:
         pair = request.args.get("pair")
-        offset = request.args.get("offset")
+        offset = int(request.args.get("offset"))
         if not pair:
             return jsonify({"error": "Missing 'pair' parameter"}), 400
         
