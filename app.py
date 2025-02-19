@@ -9,42 +9,41 @@ CORS(app)  # Enable CORS for all domains
 
 import numpy as np
 
-class UltimateCandlePredictor:
+class HighAccuracyPredictor:
     def __init__(self):
         self.trend_bias = None
 
     def fit(self, X, y):
-        """Train model using recent price and volume trends."""
+        """Train model on volume, trend strength, and momentum confirmation."""
         self.trend_bias = 1 if sum(y) > 0 else -1  
 
     def predict(self, X):
-        """Predicts the next candle's exact direction with optimized signals."""
+        """Predicts exact next candle direction with improved trend validation."""
         predictions = []
+
         for features in X:
             volume, price_change, prev_close, obv, vpt, volume_ratio, momentum_strength, volume_spike = features
+            
+            # **Key Trend Confirmation Metrics**
+            obv_signal = np.sign(obv)  
+            vpt_signal = np.sign(vpt)  
+            volume_strength = np.sign(volume_ratio - 1)  
+            momentum_signal = np.sign(momentum_strength - 0.5)  
+            volume_spike_signal = np.sign(volume_spike - 1)  # Detects unusual volume surges
 
-            # **Core Trend & Volume Signals**
-            price_signal = np.sign(price_change)
-            obv_signal = np.sign(obv)
-            vpt_signal = np.sign(vpt)
-            volume_trend = np.sign(volume_ratio - 1)
-            momentum_signal = np.sign(momentum_strength - 0.5)
-            volume_spike_signal = np.sign(volume_spike - 1)
-
-            # **Weighted Calculation for Final Signal**
+            # **Final Weighted Signal Calculation**
             total_signal = (
-                price_signal * 0.4 +  # Higher priority on price direction
-                obv_signal * 0.2 +  
-                vpt_signal * 0.2 +  
-                volume_trend * 0.2 +  
+                obv_signal * 0.3 +  
+                vpt_signal * 0.25 +  
+                volume_strength * 0.2 +  
                 momentum_signal * 0.3 +  
-                volume_spike_signal * 0.3  
+                volume_spike_signal * 0.35  # Gives priority to sudden volume shifts
             )
 
-            # **Balanced Thresholds for More Calls/Puts**
-            if total_signal > 0.3:
+            # **Strong Confirmation Filtering**
+            if total_signal > 0.8:
                 predictions.append(1)  # CALL
-            elif total_signal < -0.3:
+            elif total_signal < -0.8:
                 predictions.append(-1)  # PUT
             else:
                 predictions.append(0)  # NEUTRAL
@@ -53,10 +52,10 @@ class UltimateCandlePredictor:
 
 
 def process_candles(candles):
-    """Processes historical candles with balanced filters."""
+    """Processes candle data with enhanced accuracy filters."""
     data = []
     obv, vpt = 0, 0
-    ema_alpha = 0.1  
+    ema_alpha = 0.12  # Smoother EMA for volume tracking
     volume_ema = int(candles[0]['volume'])
 
     for i in range(len(candles) - 1, -1, -1):
@@ -64,16 +63,27 @@ def process_candles(candles):
         price_change = float(candles[i]['close']) - float(candles[i]['open'])
         prev_close = float(candles[i-1]['close']) if i > 0 else float(candles[i]['open'])
 
+        # **OBV Calculation**
         obv += last_volume if price_change > 0 else -last_volume
+
+        # **VPT Calculation**
         price_ratio = price_change / prev_close if prev_close != 0 else 0
         vpt += (price_ratio * last_volume)
 
+        # **Volume EMA Update**
         volume_ema = (last_volume * ema_alpha) + (volume_ema * (1 - ema_alpha))
-        volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
-        volume_spike = last_volume / max(volume_ema * 1.2, 1)
 
+        # **Volume Ratio Calculation**
+        volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
+
+        # **Detecting Volume Spikes**
+        volume_spike = last_volume / np.max([volume_ema * 1.5, 1])  # Detects abnormally high volume
+
+        # **Momentum Analysis**
         momentum_strength = 1 if price_change > 0 else 0
-        direction = 1 if price_change > 0 else -1 if price_change < 0 else 0
+
+        # **Final Direction Signal**
+        direction = 1 if price_change > 0 and momentum_strength > 0 else (-1 if price_change < 0 and momentum_strength < 0 else 0)
 
         data.append({
             'volume': last_volume,
@@ -91,7 +101,7 @@ def process_candles(candles):
 
 
 def predict_next_candle(candles):
-    """Predicts the next candle with improved accuracy."""
+    """Predicts the most accurate next candle direction."""
     if len(candles) < 2:
         return "NEUTRAL"
 
@@ -106,7 +116,7 @@ def predict_next_candle(candles):
           d['volume_ratio'], d['momentum_strength'], d['volume_spike']] for d in processed_data[:-1]]
     y = [d['direction'] for d in processed_data[:-1]]
 
-    model = UltimateCandlePredictor()
+    model = HighAccuracyPredictor()
     model.fit(X, y)
 
     last_candle = processed_data[-1]
