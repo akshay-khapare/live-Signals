@@ -186,7 +186,7 @@ def predict_next_candle(candles, window_size=10):
 
 
 
-def signal(pair):
+def signal(pair,offset):
     headers = {'Authorization': 'Bearer 8874b89990ef31aa9fd85b4e3765f222-b4f234623b1f9f383de395ea4910ff6a'}
     
     url_hist1 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M1&count=100'
@@ -209,17 +209,12 @@ def signal(pair):
               'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
              for m in response5['candles'] if m['complete']]
 
-    dir11 = predict_next_candle(data1, 3)
-    dir12 = predict_next_candle(data1, 7)
-    dir13 = predict_next_candle(data1, 14)
-    dir21 = predict_next_candle(data2, 3)
-    dir22 = predict_next_candle(data2, 7)
-    dir23 = predict_next_candle(data2, 14)
-    dir51 = predict_next_candle(data5, 3)
-    dir52 = predict_next_candle(data5, 7)
-    dir53 = predict_next_candle(data5, 14)
+    dir1 = predict_next_candle(data1, offset)
+    dir2 = predict_next_candle(data2, offset)
+    dir5 = predict_next_candle(data5, offset)
+ 
 
-    dir = dir11 if (dir11 == dir12 == dir13 == dir21 == dir22 == dir23 == dir51 == dir52 == dir53) else "NEUTRAL"
+    dir = dir1 if ( dir1==  dir2 == dir5) else "NEUTRAL"
     return dir
 
 @app.route("/")
@@ -230,10 +225,11 @@ def home():
 def get_trading_signal():
     try:
         pair = request.args.get("pair")
+        offset = request.args.get("offset")
         if not pair:
             return jsonify({"error": "Missing 'pair' parameter"}), 400
         
-        dir = signal(pair)
+        dir = signal(pair,offset)
         data={"pair": pair, "signal": dir}
         return jsonify(data)
     
