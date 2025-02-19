@@ -6,51 +6,99 @@ import numpy as np
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all domains
-
-class SimpleDecisionTree:
+class HighAccuracyVolumePredictor:
     def __init__(self):
-        self.threshold = None
-        self.label = None
+        self.thresholds = {}
 
     def fit(self, X, y):
-        """ A simple 1-feature decision tree for classification """
-        self.threshold = np.median(X[:, 0])  # Take median of the first feature
-        self.label = np.sign(np.mean(y))  # Majority class
+        """ Train using multiple volume strategies. """
+        volumes = [x[0] for x in X]
+        self.thresholds['high_volume'] = max(volumes) * 0.7  # High volume threshold
+        self.thresholds['low_volume'] = min(volumes) * 1.3  # Low volume threshold
+        self.trend_bias = 1 if sum(y) > 0 else -1  # Majority trend
 
     def predict(self, X):
-        """ Predict based on the simple threshold """
-        return np.where(X[:, 0] > self.threshold, self.label, -self.label)
+        """ Predict using multiple volume-based rules. """
+        predictions = []
+        for features in X:
+            volume, price_momentum, volume_delta = features
+
+            # 1️⃣ **Volume Climax (VC) → Strong breakouts**
+            if volume > self.thresholds['high_volume'] and abs(price_momentum) > 1.2:
+                predictions.append(1 if price_momentum > 0 else -1)  # CALL or PUT
+
+            # 2️⃣ **Volume Delta Confirmation (VDC) → Trend validation**
+            elif volume_delta > 0.5 and price_momentum > 0:
+                predictions.append(1)  # CALL
+            elif volume_delta < -0.5 and price_momentum < 0:
+                predictions.append(-1)  # PUT
+
+            # 3️⃣ **Relative Volume Surge (RV) → Detect explosive moves**
+            elif volume > self.thresholds['low_volume'] and abs(price_momentum) > 0.5:
+                predictions.append(1 if price_momentum > 0 else -1)
+
+            # 4️⃣ **No strong signals → Follow dominant trend**
+            else:
+                predictions.append(self.trend_bias)
+
+        return predictions
+
+def process_candles(candles, window_size=10):
+    """Extracts multiple volume strategies for training."""
+    data = []
+
+    for i in range(len(candles) - window_size):
+        window = candles[i:i + window_size]
+        
+        close_prices = [float(c['close']) for c in window]
+        volumes = [int(c['volume']) for c in window]
+
+        # Compute features
+        last_volume = volumes[-1]  # Latest volume
+        price_momentum = close_prices[-1] - close_prices[-2]  # Recent price change
+        volume_delta = last_volume - volumes[-2]  # Volume change from previous candle
+
+        # Define direction (1 = CALL, -1 = PUT)
+        direction = 1 if close_prices[-1] > close_prices[-2] else -1
+
+        data.append({
+            'volume': last_volume,
+            'price_momentum': price_momentum,
+            'volume_delta': volume_delta,
+            'direction': direction
+        })
+
+    return data
 
 def predict_next_candle(candles, window_size=10):
-    df = pd.DataFrame(candles)
-    df[['open', 'close', 'max', 'min']] = df[['open', 'close', 'max', 'min']].astype(float)
+    """Predicts next candle using high-accuracy volume strategies."""
+    if len(candles) < window_size + 1:
+        return "NEUTRAL"
 
-    df['direction'] = df.apply(lambda row: 1 if row['close'] > row['open'] else (-1 if row['close'] < row['open'] else 0), axis=1)
+    # Convert data types
+    for candle in candles:
+        candle['open'] = float(candle['open'])
+        candle['close'] = float(candle['close'])
+        candle['volume'] = int(candle['volume'])
 
-    for i in range(1, window_size + 1):
-        df[f'prev_close_{i}'] = df['close'].shift(i)
-        df[f'prev_volume_{i}'] = df['volume'].shift(i)
+    processed_data = process_candles(candles, window_size)
 
-    df.dropna(inplace=True)
+    # Prepare training data
+    X = [[d['volume'], d['price_momentum'], d['volume_delta']] for d in processed_data[:-1]]
+    y = [d['direction'] for d in processed_data[:-1]]
 
-    features = [col for col in df.columns if col not in ['time', 'direction']]
-    target = 'direction'
+    # Train model
+    model = HighAccuracyVolumePredictor()
+    model.fit(X, y)
 
-    train_size = int(len(df) * 0.8)
-    train_df = df[:train_size]
-    test_df = df[train_size:]
+    # Get last candle's volume & price momentum features
+    last_candle = processed_data[-1]
+    last_features = [[last_candle['volume'], last_candle['price_momentum'], last_candle['volume_delta']]]
 
-    X_train = train_df[features].values
-    y_train = train_df[target].values
-    X_test = test_df[features].values
+    next_direction = model.predict(last_features)[0]
 
-    model = SimpleDecisionTree()
-    model.fit(X_train, y_train)
+    return "CALL" if next_direction == 1 else "PUT"
 
-    last_candle_features = X_test[-1].reshape(1, -1)
-    next_direction = model.predict(last_candle_features)[0]
-
-    return 'CALL' if next_direction == 1 else 'PUT' if next_direction == -1 else 'NEUTRAL'
 
 def signal(pair):
     headers = {'Authorization': 'Bearer 8874b89990ef31aa9fd85b4e3765f222-b4f234623b1f9f383de395ea4910ff6a'}
