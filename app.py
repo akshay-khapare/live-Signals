@@ -3,98 +3,130 @@ from flask_cors import CORS
 import requests
 import pandas as pd
 import numpy as np
+import math
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all domains
+CORS(app)  
+
 class AdvancedVolumePredictor:
     def __init__(self):
         self.trend_bias = None
         self.volatility_threshold = None
-        self.volume_ma_periods = [5, 10, 20]  # Multiple periods for volume analysis
+        self.volume_ma_periods = [5, 10, 20]
+        self.weights = None
         
-    def fit(self, X, y):
-        """Train model to detect dominant market trends and establish volatility baseline."""
-        # Calculate trend strength using weighted recent data
-        weighted_trends = []
-        for i, direction in enumerate(y):
-            weight = (i + 1) / len(y)  # More recent trends get higher weights
-            weighted_trends.append(direction * weight)
-            
-        total_trend = sum(weighted_trends)
-        self.trend_bias = 1 if total_trend > 0 else -1
-        
-        # Calculate volatility threshold from training data
-        price_changes = [x[1] for x in X]  # price_change is at index 1
-        self.volatility_threshold = np.std(price_changes) * 1.5
-
-    def predict(self, X):
-        """Predicts next candle direction using enhanced volume indicators."""
-        predictions = []
-
+    def _normalize_features(self, X):
+        """Custom lightweight feature normalization."""
+        normalized_X = []
         for features in X:
-            volume, price_change, prev_close, obv, nvi, pvi, vpt, volume_ratio, ma_volume, ma_price = features
+            # Min-Max scaling without external libraries
+            normalized_row = []
+            for i, val in enumerate(features):
+                if val == 0:
+                    normalized_row.append(0)
+                    continue
+                
+                # Find min and max in the column
+                column = [row[i] for row in X]
+                col_min, col_max = min(column), max(column)
+                
+                # Prevent division by zero
+                if col_min == col_max:
+                    normalized_row.append(0.5)
+                else:
+                    normalized_val = (val - col_min) / (col_max - col_min)
+                    normalized_row.append(normalized_val)
             
-            # Enhanced trend confirmation signals with weighted importance
-            obv_signal = 1 if obv > 0 else -1 if obv < 0 else 0
-            vpt_signal = 1 if vpt > 0 else -1 if vpt < 0 else 0
-            pvi_signal = 1 if pvi > nvi else -1 if pvi < nvi else 0
+            normalized_X.append(normalized_row)
+        
+        return normalized_X
+    
+    def _calculate_feature_importance(self, X, y):
+        """Calculate feature importance using correlation and variance."""
+        feature_importances = []
+        
+        for i in range(len(X[0])):
+            column = [row[i] for row in X]
             
-            # Volume trend analysis
-            volume_trend = 1 if volume_ratio > 1.2 else -1 if volume_ratio < 0.8 else 0
+            # Calculate correlation with target
+            column_mean = sum(column) / len(column)
+            y_mean = sum(y) / len(y)
             
-            # Weighted signal combination
-            signal_weights = {
-                'obv': 0.3,
-                'vpt': 0.25,
-                'pvi': 0.25,
-                'volume': 0.2
-            }
-            
-            weighted_signal = (
-                obv_signal * signal_weights['obv'] +
-                vpt_signal * signal_weights['vpt'] +
-                pvi_signal * signal_weights['pvi'] +
-                volume_trend * signal_weights['volume']
+            numerator = sum((column[j] - column_mean) * (y[j] - y_mean) for j in range(len(y)))
+            denominator = math.sqrt(
+                sum((column[j] - column_mean)**2 for j in range(len(y))) *
+                sum((y[j] - y_mean)**2 for j in range(len(y)))
             )
-
-            # Dynamic thresholds based on market conditions
-            price_volatility = abs(price_change) / prev_close
-            volume_volatility = abs(volume - ma_volume) / ma_volume
             
-            # Adaptive decision thresholds
-            trend_threshold = 0.15 * (1 + volume_volatility)  # Requires stronger signals in volatile periods
-            neutral_threshold = 0.05 * (1 + price_volatility)
+            correlation = numerator / denominator if denominator != 0 else 0
+            variance = sum((val - column_mean)**2 for val in column) / len(column)
             
-            # Enhanced decision making with volatility consideration
-            if price_volatility > self.volatility_threshold * 2:
-                predictions.append(0)  # Stay neutral in extremely volatile conditions
-            elif abs(weighted_signal) < neutral_threshold:
-                predictions.append(0)  # NEUTRAL
-            elif weighted_signal > trend_threshold:
-                # Confirmation check using price action
-                if price_change > 0 and volume_ratio > 1:
-                    predictions.append(1)  # Strong CALL signal
-                else:
-                    predictions.append(0)  # Weak signal, stay neutral
-            elif weighted_signal < -trend_threshold:
-                # Confirmation check using price action
-                if price_change < 0 and volume_ratio > 1:
-                    predictions.append(-1)  # Strong PUT signal
-                else:
-                    predictions.append(0)  # Weak signal, stay neutral
-            else:
-                predictions.append(0)  # NEUTRAL
-
+            feature_importances.append(abs(correlation) * variance)
+        
+        return feature_importances
+    
+    def fit(self, X, y):
+        """Train model using custom lightweight techniques."""
+        # Normalize features
+        X_normalized = self._normalize_features(X)
+        
+        # Calculate feature importance
+        feature_importances = self._calculate_feature_importance(X_normalized, y)
+        
+        # Initialize adaptive weights
+        self.weights = [
+            1.0 / (1 + math.exp(-importance)) 
+            for importance in feature_importances
+        ]
+        
+        # Calculate trend bias with weighted recent data
+        weighted_trends = [y[i] * (i + 1) / len(y) for i in range(len(y))]
+        self.trend_bias = 1 if sum(weighted_trends) > 0 else -1
+        
+        # Calculate volatility threshold
+        price_changes = [x[1] for x in X]
+        self.volatility_threshold = np.std(price_changes) * 1.5
+    
+    def _weighted_voting(self, features):
+        """Custom ensemble prediction using weighted voting."""
+        # Weighted feature contributions
+        weighted_contributions = [
+            features[i] * self.weights[i] 
+            for i in range(len(features))
+        ]
+        
+        # Aggregate weighted contributions
+        total_contribution = sum(weighted_contributions)
+        normalized_contribution = total_contribution / sum(self.weights)
+        
+        # Adaptive thresholding
+        if abs(normalized_contribution) < 0.1:
+            return 0  # Neutral
+        elif normalized_contribution > 0.3:
+            return 1  # Strong positive
+        elif normalized_contribution < -0.3:
+            return -1  # Strong negative
+        else:
+            return 0  # Neutral
+    
+    def predict(self, X):
+        """Predict using custom lightweight ensemble method."""
+        # Normalize features
+        X_normalized = self._normalize_features(X)
+        
+        predictions = []
+        for features in X_normalized:
+            prediction = self._weighted_voting(features)
+            predictions.append(prediction)
+        
         return predictions
 
-
 def process_candles(candles, window_size=10):
-    """Enhanced candle processing with improved technical indicators."""
+    """Enhanced candle processing with lightweight technical indicators."""
     data = []
     obv, nvi, pvi, vpt = 0, 1000, 1000, 0
     
-    # Calculate exponential moving averages for volume
-    ema_alpha = 2 / (window_size + 1)
+    # Lightweight moving averages
     volume_ema = int(candles[0]['volume'])
     
     for i in range(len(candles) - window_size - 1, -1, -1):
@@ -107,37 +139,42 @@ def process_candles(candles, window_size=10):
         price_change = close_prices[-1] - close_prices[-2]
         prev_close = close_prices[-2]
         
-        # Enhanced OBV calculation with volume weight
-        volume_weight = last_volume / sum(volumes)
-        obv = obv + (last_volume * volume_weight) if price_change > 0 else obv - (last_volume * volume_weight)
+        # Simplified technical indicators
+        volume_momentum = last_volume / (sum(volumes) + 1e-5)
+        price_momentum = price_change / (prev_close + 1e-5)
         
-        # Improved NVI and PVI calculations with trend consideration
-        price_ratio = price_change / prev_close if prev_close != 0 else 0
-        nvi = nvi * (1 + price_ratio * 1.5) if last_volume < volume_ema else nvi
-        pvi = pvi * (1 + price_ratio * 1.5) if last_volume > volume_ema else pvi
+        # Lightweight OBV calculation
+        obv = obv + (last_volume * volume_momentum * (1 + abs(price_momentum)))
         
-        # Enhanced VPT calculation
-        vpt = vpt + (price_ratio * last_volume * (1 + abs(price_ratio)))
+        # Simplified NVI and PVI
+        nvi = nvi * (1 + price_momentum * (2 if last_volume < volume_ema else 1))
+        pvi = pvi * (1 + price_momentum * (2 if last_volume > volume_ema else 1))
+        
+        # Lightweight VPT
+        vpt = vpt + (price_momentum * last_volume * (1 + abs(price_momentum) * 2))
         
         # Update volume EMA
-        volume_ema = (last_volume * ema_alpha) + (volume_ema * (1 - ema_alpha))
+        volume_ema = int(0.7 * last_volume + 0.3 * volume_ema)
         
-        # Calculate multiple moving averages for better trend confirmation
-        ma_volumes = []
-        for period in [5, 10, 20]:
-            if i + period <= len(candles):
-                period_volumes = [int(c['volume']) for c in candles[i:i+period]]
-                ma_volumes.append(sum(period_volumes) / len(period_volumes))
+        # Multiple moving averages
+        ma_volumes = [
+            sum([int(c['volume']) for c in candles[i:i+period]]) / period 
+            for period in [5, 10, 20] if i + period <= len(candles)
+        ]
         
         ma_volume = sum(ma_volumes) / len(ma_volumes) if ma_volumes else sum(volumes) / len(volumes)
         ma_price = sum(close_prices) / len(close_prices)
         
-        # Enhanced volume ratio calculation
-        volume_ratio = last_volume / ma_volume if ma_volume != 0 else 1
+        # Volume ratio
+        volume_ratio = last_volume / (ma_volume + 1e-5)
         
-        # Improved direction calculation with momentum consideration
-        momentum = sum(1 for p in close_prices[:-1] if p < close_prices[-1]) / (len(close_prices) - 1)
-        direction = 1 if price_change > 0 and momentum > 0.6 else (-1 if price_change < 0 and momentum < 0.4 else 0)
+        # Multi-factor momentum
+        momentum_factors = [
+            sum(1 for p in close_prices[:-1] if p < close_prices[-1]) / (len(close_prices) - 1),
+            sum(1 for v in volumes[:-1] if v < volumes[-1]) / (len(volumes) - 1)
+        ]
+        direction = 1 if price_change > 0 and np.mean(momentum_factors) > 0.6 else \
+                    (-1 if price_change < 0 and np.mean(momentum_factors) < 0.4 else 0)
         
         data.append({
             'volume': last_volume,
@@ -156,21 +193,29 @@ def process_candles(candles, window_size=10):
     return data[::-1]
 
 def predict_next_candle(candles, window_size=10):
-    """Enhanced prediction function with improved accuracy."""
+    """Enhanced prediction function with lightweight approach."""
     if len(candles) < window_size + 1:
         return "NEUTRAL"
         
-    # Normalize input data
-    for candle in candles:
-        candle['open'] = float(candle['open'])
-        candle['close'] = float(candle['close'])
-        candle['volume'] = int(candle['volume'])
+    # Lightweight data validation
+    try:
+        for candle in candles:
+            float(candle['open'])
+            float(candle['close'])
+            int(candle['volume'])
+    except (ValueError, TypeError, KeyError) as e:
+        print(f"Data validation error: {e}")
+        return "NEUTRAL"
     
     processed_data = process_candles(candles, window_size)
     
     X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['nvi'], d['pvi'], d['vpt'], 
           d['volume_ratio'], d['ma_volume'], d['ma_price']] for d in processed_data[:-1]]
     y = [d['direction'] for d in processed_data[:-1]]
+    
+    # Handle insufficient training data
+    if len(X) < 2 or len(set(y)) < 2:
+        return "NEUTRAL"
     
     model = AdvancedVolumePredictor()
     model.fit(X, y)
@@ -184,38 +229,19 @@ def predict_next_candle(candles, window_size=10):
     
     return "CALL" if next_direction == 1 else "PUT" if next_direction == -1 else "NEUTRAL"
 
-
-
 def signal(pair,offset,minute):
     headers = {'Authorization': 'Bearer 8874b89990ef31aa9fd85b4e3765f222-b4f234623b1f9f383de395ea4910ff6a'}
     
     url_hist1 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M{minute}&count=100'
-    url_hist2 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M2&count=100'
-    url_hist5 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M5&count=100'
 
     response1 = requests.get(url_hist1, headers=headers).json()
-    # response2 = requests.get(url_hist2, headers=headers).json()
-    # response5 = requests.get(url_hist5, headers=headers).json()
 
     data1 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
               'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
              for m in response1['candles'] if m['complete']]
 
-    # data2 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
-    #           'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
-    #          for m in response2['candles'] if m['complete']]
-
-    # data5 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
-    #           'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
-    #          for m in response5['candles'] if m['complete']]
-
-    dir1 = predict_next_candle(data1, offset)
-    # dir2 = predict_next_candle(data2, offset)
-    # dir5 = predict_next_candle(data5, offset)
- 
-
-    # dir = dir1 if ( dir1==  dir2 == dir5) else "NEUTRAL"
-    return dir1
+    dir = predict_next_candle(data1, offset)
+    return dir
 
 @app.route("/")
 def home():
