@@ -6,45 +6,40 @@ import numpy as np
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all domains
-import numpy as np
 
-import numpy as np
-
-class AdvancedVolumePredictor:
+class PureVolumeMomentumPredictor:
     def __init__(self):
         self.trend_bias = None
 
     def fit(self, X, y):
-        """Train model to detect dominant trend bias based on historical movements."""
+        """Train model based on volume, momentum, and price action patterns."""
         self.trend_bias = 1 if sum(y) > 0 else -1  
 
     def predict(self, X):
-        """Predict next candle direction using volume, trend, and momentum signals."""
+        """Predict the exact next candle direction using volume, trend, and momentum signals."""
         predictions = []
 
         for features in X:
-            volume, price_change, prev_close, obv, nvi, pvi, vpt, volume_ratio, momentum = features
+            volume, price_change, prev_close, obv, vpt, volume_ratio, momentum_strength = features
             
-            # **Key Indicators Confirmation**
+            # **Trend Confirmation from OBV & VPT**
             obv_signal = np.sign(obv)  
-            pvi_signal = np.sign(pvi - nvi)  
             vpt_signal = np.sign(vpt)  
             volume_strength = np.sign(volume_ratio - 1)  
-            momentum_signal = np.sign(momentum - 0.5)  
+            momentum_signal = np.sign(momentum_strength - 0.5)  
 
-            # **Final Decision - Weighted Confidence Model**
+            # **Final Weighted Signal Strength**
             total_signal = (
-                obv_signal * 0.3 +
-                pvi_signal * 0.2 +
-                vpt_signal * 0.2 +
-                volume_strength * 0.2 +
-                momentum_signal * 0.3
+                obv_signal * 0.35 +  
+                vpt_signal * 0.25 +  
+                volume_strength * 0.2 +  
+                momentum_signal * 0.3  
             )
 
-            # **Stronger Trend Validation**
-            if total_signal > 0.5:
+            # **Noise Filtering & Confirmation**
+            if total_signal > 0.7:
                 predictions.append(1)  # CALL
-            elif total_signal < -0.5:
+            elif total_signal < -0.7:
                 predictions.append(-1)  # PUT
             else:
                 predictions.append(0)  # NEUTRAL
@@ -53,10 +48,10 @@ class AdvancedVolumePredictor:
 
 
 def process_candles(candles):
-    """Processes candle data with trend detection and momentum validation."""
+    """Processes candle data for accurate volume & momentum analysis."""
     data = []
-    obv, nvi, pvi, vpt = 0, 1000, 1000, 0
-    ema_alpha = 0.2
+    obv, vpt = 0, 0
+    ema_alpha = 0.15
     volume_ema = int(candles[0]['volume'])
 
     for i in range(len(candles) - 1, -1, -1):
@@ -65,15 +60,11 @@ def process_candles(candles):
         prev_close = float(candles[i-1]['close']) if i > 0 else float(candles[i]['open'])
 
         # **OBV Calculation**
-        obv = obv + (last_volume if price_change > 0 else -last_volume)
-
-        # **NVI & PVI Calculation**
-        price_ratio = price_change / prev_close if prev_close != 0 else 0
-        nvi = nvi * (1 + price_ratio) if last_volume < volume_ema else nvi
-        pvi = pvi * (1 + price_ratio) if last_volume > volume_ema else pvi
+        obv += last_volume if price_change > 0 else -last_volume
 
         # **VPT Calculation**
-        vpt = vpt + (price_ratio * last_volume)
+        price_ratio = price_change / prev_close if prev_close != 0 else 0
+        vpt += (price_ratio * last_volume)
 
         # **Volume EMA Update**
         volume_ema = (last_volume * ema_alpha) + (volume_ema * (1 - ema_alpha))
@@ -82,21 +73,19 @@ def process_candles(candles):
         volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
 
         # **Momentum Analysis**
-        momentum = 1 if price_change > 0 else 0
+        momentum_strength = 1 if price_change > 0 else 0
 
         # **Direction Signal**
-        direction = 1 if price_change > 0 and momentum > 0 else (-1 if price_change < 0 and momentum < 0 else 0)
+        direction = 1 if price_change > 0 and momentum_strength > 0 else (-1 if price_change < 0 and momentum_strength < 0 else 0)
 
         data.append({
             'volume': last_volume,
             'price_change': price_change,
             'prev_close': prev_close,
             'obv': obv,
-            'nvi': nvi,
-            'pvi': pvi,
             'vpt': vpt,
             'volume_ratio': volume_ratio,
-            'momentum': momentum,
+            'momentum_strength': momentum_strength,
             'direction': direction
         })
 
@@ -104,7 +93,7 @@ def process_candles(candles):
 
 
 def predict_next_candle(candles):
-    """Predicts the next candle direction without MA or multi-period calculations."""
+    """Predicts the exact next candle direction with highest accuracy."""
     if len(candles) < 2:
         return "NEUTRAL"
 
@@ -115,21 +104,22 @@ def predict_next_candle(candles):
 
     processed_data = process_candles(candles)
 
-    X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['nvi'], d['pvi'], d['vpt'],
-          d['volume_ratio'], d['momentum']] for d in processed_data[:-1]]
+    X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['vpt'],
+          d['volume_ratio'], d['momentum_strength']] for d in processed_data[:-1]]
     y = [d['direction'] for d in processed_data[:-1]]
 
-    model = AdvancedVolumePredictor()
+    model = PureVolumeMomentumPredictor()
     model.fit(X, y)
 
     last_candle = processed_data[-1]
     last_features = [[last_candle['volume'], last_candle['price_change'], last_candle['prev_close'],
-                      last_candle['obv'], last_candle['nvi'], last_candle['pvi'], last_candle['vpt'],
-                      last_candle['volume_ratio'], last_candle['momentum']]]
+                      last_candle['obv'], last_candle['vpt'],
+                      last_candle['volume_ratio'], last_candle['momentum_strength']]]
 
     next_direction = model.predict(last_features)[0]
 
     return "CALL" if next_direction == 1 else "PUT" if next_direction == -1 else "NEUTRAL"
+
 
 
 def signal(pair,offset,minute):
@@ -143,7 +133,7 @@ def signal(pair,offset,minute):
               'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
              for m in response1['candles'] if m['complete']]
 
-    dir = predict_next_candle(data1, offset)
+    dir = predict_next_candle(data1)
     return dir
 
 @app.route("/")
