@@ -186,36 +186,36 @@ def predict_next_candle(candles, window_size=10):
 
 
 
-def signal(pair,offset):
+def signal(pair,offset,minute):
     headers = {'Authorization': 'Bearer 8874b89990ef31aa9fd85b4e3765f222-b4f234623b1f9f383de395ea4910ff6a'}
     
-    url_hist1 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M1&count=100'
+    url_hist1 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M{minute}&count=100'
     url_hist2 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M2&count=100'
     url_hist5 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M5&count=100'
 
     response1 = requests.get(url_hist1, headers=headers).json()
-    response2 = requests.get(url_hist2, headers=headers).json()
-    response5 = requests.get(url_hist5, headers=headers).json()
+    # response2 = requests.get(url_hist2, headers=headers).json()
+    # response5 = requests.get(url_hist5, headers=headers).json()
 
     data1 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
               'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
              for m in response1['candles'] if m['complete']]
 
-    data2 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
-              'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
-             for m in response2['candles'] if m['complete']]
+    # data2 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
+    #           'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
+    #          for m in response2['candles'] if m['complete']]
 
-    data5 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
-              'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
-             for m in response5['candles'] if m['complete']]
+    # data5 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
+    #           'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
+    #          for m in response5['candles'] if m['complete']]
 
     dir1 = predict_next_candle(data1, offset)
-    dir2 = predict_next_candle(data2, offset)
-    dir5 = predict_next_candle(data5, offset)
+    # dir2 = predict_next_candle(data2, offset)
+    # dir5 = predict_next_candle(data5, offset)
  
 
-    dir = dir1 if ( dir1==  dir2 == dir5) else "NEUTRAL"
-    return dir
+    # dir = dir1 if ( dir1==  dir2 == dir5) else "NEUTRAL"
+    return dir1
 
 @app.route("/")
 def home():
@@ -225,11 +225,12 @@ def home():
 def get_trading_signal():
     try:
         pair = request.args.get("pair")
+        minute = request.args.get("minute")
         offset = int(request.args.get("offset"))
         if not pair:
             return jsonify({"error": "Missing 'pair' parameter"}), 400
         
-        dir = signal(pair,offset)
+        dir = signal(pair,offset,minute)
         data={"pair": pair, "signal": dir}
         return jsonify(data)
     
