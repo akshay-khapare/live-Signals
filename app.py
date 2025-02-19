@@ -8,6 +8,8 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all domains
 import numpy as np
 
+import numpy as np
+
 class AdvancedVolumePredictor:
     def __init__(self):
         self.trend_bias = None
@@ -17,17 +19,16 @@ class AdvancedVolumePredictor:
         self.trend_bias = 1 if sum(y) > 0 else -1  
 
     def predict(self, X):
-        """Predict next candle direction using trend and volume confirmation."""
+        """Predict next candle direction using volume, trend, and momentum signals."""
         predictions = []
 
         for features in X:
-            volume, price_change, prev_close, obv, nvi, pvi, vpt, volume_ratio, ma_volume, ma_price, momentum = features
+            volume, price_change, prev_close, obv, nvi, pvi, vpt, volume_ratio, momentum = features
             
             # **Key Indicators Confirmation**
             obv_signal = np.sign(obv)  
             pvi_signal = np.sign(pvi - nvi)  
             vpt_signal = np.sign(vpt)  
-            trend_ma_signal = 1 if ma_price > prev_close else -1  
             volume_strength = np.sign(volume_ratio - 1)  
             momentum_signal = np.sign(momentum - 0.5)  
 
@@ -36,9 +37,8 @@ class AdvancedVolumePredictor:
                 obv_signal * 0.3 +
                 pvi_signal * 0.2 +
                 vpt_signal * 0.2 +
-                trend_ma_signal * 0.2 +
-                volume_strength * 0.1 +
-                momentum_signal * 0.2
+                volume_strength * 0.2 +
+                momentum_signal * 0.3
             )
 
             # **Stronger Trend Validation**
@@ -52,21 +52,17 @@ class AdvancedVolumePredictor:
         return predictions
 
 
-def process_candles(candles, window_size=10):
-    """Processes candle data with enhanced trend detection and momentum validation."""
+def process_candles(candles):
+    """Processes candle data with trend detection and momentum validation."""
     data = []
     obv, nvi, pvi, vpt = 0, 1000, 1000, 0
-    ema_alpha = 2 / (window_size + 1)
+    ema_alpha = 0.2
     volume_ema = int(candles[0]['volume'])
 
-    for i in range(len(candles) - window_size - 1, -1, -1):
-        window = candles[i:i + window_size]
-        close_prices = [float(c['close']) for c in window]
-        volumes = [int(c['volume']) for c in window]
-
-        last_volume = volumes[-1]
-        price_change = close_prices[-1] - close_prices[-2]
-        prev_close = close_prices[-2]
+    for i in range(len(candles) - 1, -1, -1):
+        last_volume = int(candles[i]['volume'])
+        price_change = float(candles[i]['close']) - float(candles[i]['open'])
+        prev_close = float(candles[i-1]['close']) if i > 0 else float(candles[i]['open'])
 
         # **OBV Calculation**
         obv = obv + (last_volume if price_change > 0 else -last_volume)
@@ -82,20 +78,14 @@ def process_candles(candles, window_size=10):
         # **Volume EMA Update**
         volume_ema = (last_volume * ema_alpha) + (volume_ema * (1 - ema_alpha))
 
-        # **Multi-Period Moving Averages**
-        ma_volumes = [sum([int(c['volume']) for c in candles[i:i+period]]) / len(candles[i:i+period])
-                      for period in [2, 5, 7] if i + period <= len(candles)]
-        ma_volume = np.mean(ma_volumes) if ma_volumes else np.mean(volumes)
-        ma_price = np.mean(close_prices)
-
         # **Volume Ratio Calculation**
-        volume_ratio = last_volume / ma_volume if ma_volume != 0 else 1
+        volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
 
         # **Momentum Analysis**
-        momentum = sum(1 for p in close_prices[:-1] if p < close_prices[-1]) / (len(close_prices) - 1)
+        momentum = 1 if price_change > 0 else 0
 
         # **Direction Signal**
-        direction = 1 if price_change > 0 and momentum > 0.6 else (-1 if price_change < 0 and momentum < 0.4 else 0)
+        direction = 1 if price_change > 0 and momentum > 0 else (-1 if price_change < 0 and momentum < 0 else 0)
 
         data.append({
             'volume': last_volume,
@@ -106,8 +96,6 @@ def process_candles(candles, window_size=10):
             'pvi': pvi,
             'vpt': vpt,
             'volume_ratio': volume_ratio,
-            'ma_volume': ma_volume,
-            'ma_price': ma_price,
             'momentum': momentum,
             'direction': direction
         })
@@ -115,9 +103,9 @@ def process_candles(candles, window_size=10):
     return data[::-1]
 
 
-def predict_next_candle(candles, window_size=10):
-    """Predicts the next candle direction using enhanced trend and momentum signals."""
-    if len(candles) < window_size + 1:
+def predict_next_candle(candles):
+    """Predicts the next candle direction without MA or multi-period calculations."""
+    if len(candles) < 2:
         return "NEUTRAL"
 
     for candle in candles:
@@ -125,10 +113,10 @@ def predict_next_candle(candles, window_size=10):
         candle['close'] = float(candle['close'])
         candle['volume'] = int(candle['volume'])
 
-    processed_data = process_candles(candles, window_size)
+    processed_data = process_candles(candles)
 
     X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['nvi'], d['pvi'], d['vpt'],
-          d['volume_ratio'], d['ma_volume'], d['ma_price'], d['momentum']] for d in processed_data[:-1]]
+          d['volume_ratio'], d['momentum']] for d in processed_data[:-1]]
     y = [d['direction'] for d in processed_data[:-1]]
 
     model = AdvancedVolumePredictor()
@@ -137,8 +125,7 @@ def predict_next_candle(candles, window_size=10):
     last_candle = processed_data[-1]
     last_features = [[last_candle['volume'], last_candle['price_change'], last_candle['prev_close'],
                       last_candle['obv'], last_candle['nvi'], last_candle['pvi'], last_candle['vpt'],
-                      last_candle['volume_ratio'], last_candle['ma_volume'], last_candle['ma_price'],
-                      last_candle['momentum']]]
+                      last_candle['volume_ratio'], last_candle['momentum']]]
 
     next_direction = model.predict(last_features)[0]
 
