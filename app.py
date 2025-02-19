@@ -11,76 +11,185 @@ class AdvancedVolumePredictor:
     def __init__(self):
         self.trend_bias = None
         self.volatility_threshold = None
-        self.volume_ma_periods = [5, 10, 20]
-        self.market_regime = None
-        self.rsi_threshold = {'overbought': 85, 'oversold': 15}  # Even wider RSI thresholds
-        self.momentum_window = 14
-
-    def calculate_rsi(self, prices, period=14):
-        """Calculate Relative Strength Index."""
-        deltas = np.diff(prices)
-        gains = np.where(deltas > 0, deltas, 0)
-        losses = np.where(deltas < 0, -deltas, 0)
-
-        avg_gain = np.mean(gains[:period])
-        avg_loss = np.mean(losses[:period])
-
-        if avg_loss == 0:
-            return 100
-
-        rs = avg_gain / avg_loss
-        return 100 - (100 / (1 + rs))
-
-    def detect_market_regime(self, prices, volumes):
-        """Simplified market regime detection."""
-        price_std = np.std(prices)
-        price_trend = np.mean(np.diff(prices))
+        self.volume_ma_periods = [5, 10, 20, 50]  # Added longer period
+        self.rsi_periods = [14, 21]  # Multiple RSI periods
+        self.ema_periods = [8, 13, 21]  # Multiple EMAs for confirmation
+        self.macd_params = {'fast': 12, 'slow': 26, 'signal': 9}
         
-        if abs(price_trend) > price_std * 0.5:  # Much lower trend threshold
-            return 'trending'
-        return 'normal'
+    def calculate_ema(self, data, period):
+        """Calculate Exponential Moving Average."""
+        multiplier = 2 / (period + 1)
+        ema = [data[0]]
+        for price in data[1:]:
+            ema.append((price - ema[-1]) * multiplier + ema[-1])
+        return ema
+
+    def calculate_macd(self, prices):
+        """Calculate MACD with signal line."""
+        fast_ema = self.calculate_ema(prices, self.macd_params['fast'])
+        slow_ema = self.calculate_ema(prices, self.macd_params['slow'])
+        macd_line = [f - s for f, s in zip(fast_ema, slow_ema)]
+        signal_line = self.calculate_ema(macd_line, self.macd_params['signal'])
+        return macd_line, signal_line
+
+    def calculate_rsi(self, prices, period):
+        """Enhanced RSI calculation."""
+        deltas = np.diff(prices)
+        seed = deltas[:period+1]
+        up = seed[seed >= 0].sum()/period
+        down = -seed[seed < 0].sum()/period
+        
+        if down == 0:
+            return [100] * len(prices)
+            
+        rs = up/down
+        rsi = np.zeros_like(prices)
+        rsi[:period] = 100. - 100./(1.+ rs)
+
+        for i in range(period, len(prices)):
+            delta = deltas[i - 1]
+            if delta > 0:
+                upval = delta
+                downval = 0.
+            else:
+                upval = 0.
+                downval = -delta
+
+            up = (up*(period-1) + upval)/period
+            down = (down*(period-1) + downval)/period
+            rs = up/down
+            rsi[i] = 100. - 100./(1.+ rs)
+            
+        return rsi
+
+    def detect_divergence(self, prices, indicator_values, window=10):
+        """Detect price and indicator divergence."""
+        if len(prices) < window:
+            return 0
+            
+        price_trend = np.polyfit(range(window), prices[-window:], 1)[0]
+        indicator_trend = np.polyfit(range(window), indicator_values[-window:], 1)[0]
+        
+        if price_trend * indicator_trend < 0:  # Opposite directions
+            return np.sign(indicator_trend)  # Return direction of indicator trend
+        return 0
+
+    def calculate_volume_profile(self, volumes, prices, num_bins=10):
+        """Calculate volume profile for price levels."""
+        bins = np.linspace(min(prices), max(prices), num_bins)
+        vol_profile = np.zeros(num_bins-1)
+        
+        for price, volume in zip(prices, volumes):
+            bin_idx = np.digitize(price, bins) - 1
+            if 0 <= bin_idx < len(vol_profile):
+                vol_profile[bin_idx] += volume
+                
+        return vol_profile, bins
 
     def fit(self, X, y):
-        """Simplified training process."""
+        """Enhanced model training with multiple indicators."""
         prices = [x[2] for x in X]  # prev_close at index 2
         volumes = [x[0] for x in X]  # volume at index 0
         
-        self.market_regime = self.detect_market_regime(prices, volumes)
+        # Calculate base volatility
+        returns = np.diff(prices) / prices[:-1]
+        self.volatility_threshold = np.std(returns) * 2
         
-        # Simple trend bias calculation
-        price_changes = [x[1] for x in X]
-        self.trend_bias = np.sign(sum(price_changes))
+        # Calculate volume profile
+        self.vol_profile, self.price_bins = self.calculate_volume_profile(volumes, prices)
         
-        # Set a very low volatility threshold
-        self.volatility_threshold = np.std(price_changes) * 0.5
+        # Pre-calculate indicator thresholds
+        self.rsi_thresholds = {}
+        for period in self.rsi_periods:
+            rsi_values = self.calculate_rsi(prices, period)
+            self.rsi_thresholds[period] = {
+                'oversold': np.percentile(rsi_values, 20),
+                'overbought': np.percentile(rsi_values, 80)
+            }
 
     def predict(self, X):
-        """Simplified and more aggressive prediction logic."""
+        """Highly accurate prediction with multiple confirmation layers."""
         predictions = []
+        window_size = max(self.volume_ma_periods)
         
-        for features in X:
-            volume, price_change, prev_close, obv, nvi, pvi, vpt, volume_ratio, ma_volume, ma_price = features
+        if len(X) < window_size:
+            return [0] * len(X)
             
-            # Basic signal components
-            obv_signal = 1 if obv > 0 else -1 if obv < 0 else 0
-            vpt_signal = 1 if vpt > 0 else -1 if vpt < 0 else 0
-            price_signal = 1 if price_change > 0 else -1 if price_change < 0 else 0
+        for i in range(window_size, len(X)):
+            window = X[max(0, i-window_size):i+1]
+            prices = [x[2] for x in window]  # Using prev_close
+            volumes = [x[0] for x in window]
             
-            # Simple weighted signal
-            signal_strength = (
-                obv_signal * 0.4 +
-                vpt_signal * 0.3 +
-                price_signal * 0.3
-            )
+            current_price = prices[-1]
+            current_volume = volumes[-1]
             
-            # Very low threshold for signal generation
-            if signal_strength > 0.2:  # Lowered from previous thresholds
-                predictions.append(1)  # CALL
-            elif signal_strength < -0.2:  # Lowered from previous thresholds
-                predictions.append(-1)  # PUT
-            else:
-                predictions.append(0)  # NEUTRAL
-
+            # 1. Calculate multiple EMAs
+            ema_signals = []
+            for period in self.ema_periods:
+                ema = self.calculate_ema(prices, period)
+                ema_signals.append(1 if current_price > ema[-1] else -1)
+            
+            # 2. Calculate MACD
+            macd_line, signal_line = self.calculate_macd(prices)
+            macd_signal = 1 if macd_line[-1] > signal_line[-1] else -1
+            
+            # 3. Calculate multiple RSIs
+            rsi_signals = []
+            for period in self.rsi_periods:
+                rsi = self.calculate_rsi(prices, period)
+                if rsi[-1] < self.rsi_thresholds[period]['oversold']:
+                    rsi_signals.append(1)  # Potential reversal up
+                elif rsi[-1] > self.rsi_thresholds[period]['overbought']:
+                    rsi_signals.append(-1)  # Potential reversal down
+                else:
+                    rsi_signals.append(0)
+            
+            # 4. Volume analysis
+            vol_ma = np.mean(volumes[-20:])
+            volume_signal = 1 if current_volume > vol_ma * 1.5 else 0
+            
+            # 5. Price action
+            price_change = (current_price - prices[-2]) / prices[-2]
+            volatility = np.std(prices[-20:]) / np.mean(prices[-20:])
+            
+            # 6. Divergence check
+            rsi_divergence = self.detect_divergence(prices[-10:], 
+                                                  self.calculate_rsi(prices, 14)[-10:])
+            
+            # Comprehensive signal generation with strict rules
+            signal = 0
+            
+            # Rule 1: Strong trend confirmation (all EMAs aligned)
+            ema_consensus = all(s == ema_signals[0] for s in ema_signals)
+            
+            # Rule 2: MACD confirmation
+            macd_confirm = macd_signal == ema_signals[0] if ema_consensus else False
+            
+            # Rule 3: RSI confirmation (no overbought/oversold conflict)
+            rsi_conflict = any(s * rsi_signals[0] < 0 for s in rsi_signals if s != 0)
+            
+            # Rule 4: Volume confirmation
+            volume_confirm = volume_signal > 0
+            
+            # Rule 5: Volatility check
+            volatility_safe = volatility < self.volatility_threshold
+            
+            # Final decision with strict criteria
+            if (ema_consensus and macd_confirm and not rsi_conflict and 
+                volume_confirm and volatility_safe and abs(price_change) > 0.0001):
+                
+                # Additional confirmation from divergence
+                if rsi_divergence != 0:
+                    signal = rsi_divergence
+                else:
+                    signal = ema_signals[0]
+                    
+                # Extra check for signal strength
+                if abs(macd_line[-1] - signal_line[-1]) < np.std(macd_line):
+                    signal = 0  # Signal not strong enough
+                    
+            predictions.append(signal)
+            
         return predictions
 
 
