@@ -8,7 +8,7 @@ from time import time
 API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
 API.connect()
 def data(pair,minute,offset):
-    velas = API.get_candles('EURUSD', (minute * 60), offset, time())
+    velas = API.get_candles(pair, (minute * 60), offset, time())
     return velas
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all domains
@@ -142,7 +142,7 @@ def predict_next_candle(candles):
 print('aaa')
 def signal(pair,offset,minute):
     
-    candles=data(pair,1,5)
+    candles=data(pair,minute,offset)
     print(candles)
     dir = predict_next_candle(candles)
     return dir
