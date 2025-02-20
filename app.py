@@ -10,74 +10,131 @@ CORS(app)  # Enable CORS for all domains
 class PureVolumeMomentumPredictor:
     def __init__(self):
         self.trend_bias = None
+        self.last_signals = []
+        self.volatility_threshold = 0.002
+
+    def calculate_rsi(self, prices, period=14):
+        gains = []
+        losses = []
+        for i in range(1, len(prices)):
+            change = prices[i] - prices[i-1]
+            if change >= 0:
+                gains.append(change)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(change))
+        
+        avg_gain = sum(gains[-period:]) / period if len(gains) >= period else sum(gains) / len(gains)
+        avg_loss = sum(losses[-period:]) / period if len(losses) >= period else sum(losses) / len(losses)
+        
+        if avg_loss == 0:
+            return 100
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
+    def calculate_macd(self, prices, fast=12, slow=26):
+        if len(prices) < slow:
+            return 0
+        
+        fast_ema = prices[-fast:] if len(prices) >= fast else prices
+        slow_ema = prices[-slow:] if len(prices) >= slow else prices
+        
+        return sum(fast_ema)/len(fast_ema) - sum(slow_ema)/len(slow_ema)
 
     def fit(self, X, y):
-        """Train model based on volume, momentum, and price action patterns."""
-        self.trend_bias = 1 if sum(y) > 0 else -1  
+        """Enhanced training with trend analysis"""
+        recent_moves = y[-20:] if len(y) > 20 else y
+        self.trend_bias = 1 if sum(recent_moves) > 0 else -1
+        
+        # Calculate average volatility for adaptive thresholds
+        price_changes = [x[1] for x in X]
+        self.volatility_threshold = sum([abs(pc) for pc in price_changes[-20:]]) / min(20, len(price_changes))
 
     def predict(self, X):
-        """Predict the exact next candle direction using volume, trend, and momentum signals."""
+        """Enhanced prediction using multiple technical indicators"""
         predictions = []
-
+        
         for features in X:
-            volume, price_change, prev_close, obv, vpt, volume_ratio, momentum_strength = features
+            volume, price_change, prev_close, obv, vpt, volume_ratio, momentum = features
             
-            # **Trend Confirmation from OBV & VPT**
-            obv_signal = np.sign(obv)  
-            vpt_signal = np.sign(vpt)  
-            volume_strength = np.sign(volume_ratio - 1)  
-            momentum_signal = np.sign(momentum_strength - 0.5)  
-
-            # **Final Weighted Signal Strength**
+            # Volume Analysis
+            volume_signal = 1 if volume_ratio > 1.5 else (-1 if volume_ratio < 0.5 else 0)
+            
+            # Price Action
+            price_signal = 1 if price_change > self.volatility_threshold else (-1 if price_change < -self.volatility_threshold else 0)
+            
+            # Trend Analysis
+            trend_signal = np.sign(obv) * 0.5 + np.sign(vpt) * 0.5
+            
+            # Momentum Analysis
+            momentum_threshold = 0.6
+            momentum_signal = 1 if momentum > momentum_threshold else (-1 if momentum < (1-momentum_threshold) else 0)
+            
+            # Combined Signal with Dynamic Weighting
             total_signal = (
-                obv_signal * 0.35 +  
-                vpt_signal * 0.25 +  
-                volume_strength * 0.2 +  
-                momentum_signal * 0.3  
+                volume_signal * 0.3 +
+                price_signal * 0.25 +
+                trend_signal * 0.25 +
+                momentum_signal * 0.2 +
+                self.trend_bias * 0.1
             )
-
-            # **Noise Filtering & Confirmation**
-            if total_signal > 0.7:
-                predictions.append(1)  # CALL
-            elif total_signal < -0.7:
-                predictions.append(-1)  # PUT
+            
+            # Signal Smoothing with Recent History
+            self.last_signals.append(total_signal)
+            if len(self.last_signals) > 3:
+                self.last_signals.pop(0)
+            
+            smoothed_signal = sum(self.last_signals) / len(self.last_signals)
+            
+            # Enhanced Decision Making
+            if abs(smoothed_signal) > 0.8 and abs(price_change) > self.volatility_threshold:
+                predictions.append(1 if smoothed_signal > 0 else -1)
             else:
-                predictions.append(0)  # NEUTRAL
+                predictions.append(0)
 
         return predictions
 
 
 def process_candles(candles):
-    """Processes candle data for accurate volume & momentum analysis."""
+    """Enhanced candle processing with additional technical indicators"""
     data = []
     obv, vpt = 0, 0
-    ema_alpha = 0.15
+    ema_alpha = 0.2  # Increased sensitivity
     volume_ema = int(candles[0]['volume'])
-
+    prices = []
+    
     for i in range(len(candles) - 1, -1, -1):
-        last_volume = int(candles[i]['volume'])
-        price_change = float(candles[i]['close']) - float(candles[i]['open'])
-        prev_close = float(candles[i-1]['close']) if i > 0 else float(candles[i]['open'])
-
-        # **OBV Calculation**
-        obv += last_volume if price_change > 0 else -last_volume
-
-        # **VPT Calculation**
+        current_candle = candles[i]
+        last_volume = int(current_candle['volume'])
+        current_close = float(current_candle['close'])
+        current_open = float(current_candle['open'])
+        price_change = current_close - current_open
+        prev_close = float(candles[i-1]['close']) if i > 0 else current_open
+        
+        prices.append(current_close)
+        
+        # Enhanced OBV calculation
+        obv += last_volume * (1 if price_change > 0 else -1 if price_change < 0 else 0)
+        
+        # Enhanced VPT calculation
         price_ratio = price_change / prev_close if prev_close != 0 else 0
-        vpt += (price_ratio * last_volume)
-
-        # **Volume EMA Update**
+        vpt += last_volume * price_ratio
+        
+        # Improved Volume Analysis
         volume_ema = (last_volume * ema_alpha) + (volume_ema * (1 - ema_alpha))
-
-        # **Volume Ratio Calculation**
         volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
-
-        # **Momentum Analysis**
-        momentum_strength = 1 if price_change > 0 else 0
-
-        # **Direction Signal**
-        direction = 1 if price_change > 0 and momentum_strength > 0 else (-1 if price_change < 0 and momentum_strength < 0 else 0)
-
+        
+        # Enhanced Momentum Calculation
+        high = float(current_candle['high'])
+        low = float(current_candle['low'])
+        range_size = high - low
+        close_position = (current_close - low) / range_size if range_size != 0 else 0.5
+        momentum_strength = (close_position + (1 if price_change > 0 else 0)) / 2
+        
+        # Direction Signal with Price Action
+        direction = 1 if price_change > 0 and momentum_strength > 0.7 else (-1 if price_change < 0 and momentum_strength < 0.3 else 0)
+        
         data.append({
             'volume': last_volume,
             'price_change': price_change,
@@ -93,13 +150,16 @@ def process_candles(candles):
 
 
 def predict_next_candle(candles):
-    """Predicts the exact next candle direction with highest accuracy."""
-    if len(candles) < 2:
+    """Enhanced prediction with confidence threshold"""
+    if len(candles) < 3:  # Increased minimum candles requirement
         return "NEUTRAL"
 
+    # Data Preparation
     for candle in candles:
         candle['open'] = float(candle['open'])
         candle['close'] = float(candle['close'])
+        candle['high'] = float(candle['high'])
+        candle['low'] = float(candle['low'])
         candle['volume'] = int(candle['volume'])
 
     processed_data = process_candles(candles)
@@ -107,6 +167,9 @@ def predict_next_candle(candles):
     X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['vpt'],
           d['volume_ratio'], d['momentum_strength']] for d in processed_data[:-1]]
     y = [d['direction'] for d in processed_data[:-1]]
+
+    if not X or not y:
+        return "NEUTRAL"
 
     model = PureVolumeMomentumPredictor()
     model.fit(X, y)
@@ -116,10 +179,13 @@ def predict_next_candle(candles):
                       last_candle['obv'], last_candle['vpt'],
                       last_candle['volume_ratio'], last_candle['momentum_strength']]]
 
-    next_direction = model.predict(last_features)[0]
+    prediction = model.predict(last_features)[0]
+    
+    # Add final confidence check
+    if abs(last_candle['price_change']) < model.volatility_threshold:
+        return "NEUTRAL"
 
-    return "CALL" if next_direction == 1 else "PUT" if next_direction == -1 else "NEUTRAL"
-
+    return "CALL" if prediction == 1 else "PUT" if prediction == -1 else "NEUTRAL"
 
 
 def signal(pair,offset,minute):
