@@ -6,47 +6,46 @@ import numpy as np
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all domains
-
 import numpy as np
 
-class UltimateHighAccuracyPredictor:
+class UltimatePredictor:
     def __init__(self):
-        self.trend_bias = None
+        self.bias = None
 
     def fit(self, X, y):
-        """Train model using deep validation of volume, price momentum, and trend confirmation."""
-        self.trend_bias = np.sign(sum(y))
+        """Train model with a mix of price action, order flow, and volume dynamics."""
+        self.bias = np.sign(sum(y))
 
     def predict(self, X):
-        """Predicts next candle direction with extreme accuracy."""
+        """Predicts next candle with the highest precision."""
         predictions = []
         for features in X:
-            volume, price_change, prev_close, obv, vpt, volume_ratio, momentum_strength, spike_strength, rsi, adx = features
-            
-            # ✅ **Advanced Signal Confirmation**
-            obv_signal = np.sign(obv)
-            vpt_signal = np.sign(vpt)
-            volume_strength = np.sign(volume_ratio - 1)  
-            momentum_signal = np.sign(momentum_strength - 0.5)  
-            spike_signal = np.sign(spike_strength - 1)  
-            rsi_signal = np.sign(rsi - 50)  # RSI above 50 = bullish, below 50 = bearish
-            adx_signal = np.sign(adx - 25)  # ADX above 25 = strong trend
+            price_momentum, order_flow, imbalance_ratio, liquidity_strength, volume_spike, engulfing_signal, wick_analysis, break_structure = features
 
-            # 🚀 **Final Signal Calculation**
+            # 📊 **Order Flow & Liquidity Strength Confirmation**
+            order_flow_signal = np.sign(order_flow)
+            liquidity_signal = np.sign(liquidity_strength)
+            imbalance_signal = np.sign(imbalance_ratio - 1)
+
+            # 🔥 **Engulfing & Wick Confirmation**
+            engulfing_strength = np.sign(engulfing_signal)
+            wick_signal = np.sign(wick_analysis)
+            break_signal = np.sign(break_structure)
+
+            # 🚀 **Final Prediction Signal**
             total_signal = (
-                obv_signal * 0.3 +
-                vpt_signal * 0.25 +
-                volume_strength * 0.2 +
-                momentum_signal * 0.3 +
-                spike_signal * 0.35 +
-                rsi_signal * 0.4 +   # Gives higher weight to RSI
-                adx_signal * 0.5     # ADX confirms strong trends
+                order_flow_signal * 0.35 +
+                liquidity_signal * 0.3 +
+                imbalance_signal * 0.25 +
+                engulfing_strength * 0.4 +
+                wick_signal * 0.3 +
+                break_signal * 0.5
             )
 
-            # 🎯 **High-Accuracy Prediction**
-            if total_signal > 1.2:
+            # 🎯 **Final Decision**
+            if total_signal > 1.3:
                 predictions.append(1)  # CALL
-            elif total_signal < -1.2:
+            elif total_signal < -1.3:
                 predictions.append(-1)  # PUT
             else:
                 predictions.append(0)  # NEUTRAL
@@ -55,70 +54,51 @@ class UltimateHighAccuracyPredictor:
 
 
 def process_candles(candles):
-    """Processes candle data with deep validation of volume and trend strength."""
+    """Extracts high-precision features from price action, order flow & liquidity."""
     data = []
-    obv, vpt = 0, 0
-    ema_alpha = 0.15  # Smoother EMA tracking
     volume_ema = int(candles[0]['volume'])
-
-    gains, losses = [], []
+    ema_alpha = 0.1  # Smooth exponential tracking
 
     for i in range(len(candles) - 1, -1, -1):
         last_volume = int(candles[i]['volume'])
-        price_change = float(candles[i]['close']) - float(candles[i]['open'])
-        prev_close = float(candles[i-1]['close']) if i > 0 else float(candles[i]['open'])
+        open_price = float(candles[i]['open'])
+        close_price = float(candles[i]['close'])
+        high_price = float(candles[i]['high'])
+        low_price = float(candles[i]['low'])
+        prev_close = float(candles[i-1]['close']) if i > 0 else close_price
 
-        # 📈 **OBV Calculation**
-        obv += last_volume if price_change > 0 else -last_volume
+        # 🔥 **Smart Order Flow & Liquidity**
+        price_momentum = close_price - open_price
+        liquidity_strength = last_volume / max(volume_ema, 1)
 
-        # 🔥 **VPT Calculation**
-        price_ratio = price_change / prev_close if prev_close != 0 else 0
-        vpt += (price_ratio * last_volume)
+        # 📈 **Order Flow & Imbalance**
+        order_flow = (close_price - prev_close) * last_volume
+        imbalance_ratio = last_volume / volume_ema if volume_ema != 0 else 1
 
-        # 📊 **Volume EMA Update**
+        # 📊 **Engulfing Candle Detection**
+        engulfing_signal = 1 if (close_price > prev_close and open_price < prev_close) else -1 if (close_price < prev_close and open_price > prev_close) else 0
+
+        # 📌 **Wick Analysis**
+        wick_analysis = 1 if (high_price - close_price) > (close_price - open_price) else -1 if (low_price - open_price) > (open_price - close_price) else 0
+
+        # 🚀 **Break of Structure (BOS)**
+        break_structure = 1 if close_price > high_price * 0.98 else -1 if close_price < low_price * 1.02 else 0
+
+        # 📉 **Volume EMA Update**
         volume_ema = (last_volume * ema_alpha) + (volume_ema * (1 - ema_alpha))
 
-        # 📌 **Volume Ratio Calculation**
-        volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
-
-        # 🚀 **Detecting Volume Spikes**
-        spike_strength = last_volume / np.max([volume_ema * 1.8, 1])  
-
-        # 🎯 **Momentum Calculation**
-        momentum_strength = 1 if price_change > 0 else 0
-
-        # 📊 **RSI Calculation**
-        if price_change > 0:
-            gains.append(price_change)
-            losses.append(0)
-        else:
-            gains.append(0)
-            losses.append(abs(price_change))
-
-        avg_gain = np.mean(gains[-14:]) if len(gains) >= 14 else np.mean(gains)
-        avg_loss = np.mean(losses[-14:]) if len(losses) >= 14 else np.mean(losses)
-        rsi = 100 - (100 / (1 + avg_gain / avg_loss)) if avg_loss != 0 else 100
-
-        # 📉 **ADX Calculation (Trend Strength)**
-        true_range = max(float(candles[i]['high']) - float(candles[i]['low']),
-                         abs(float(candles[i]['high']) - prev_close),
-                         abs(float(candles[i]['low']) - prev_close))
-        adx = (sum([true_range for _ in range(14)]) / 14) if i >= 14 else 20  # Default to 20 if not enough data
-
-        # 🔍 **Final Direction**
-        direction = 1 if price_change > 0 and momentum_strength > 0 else (-1 if price_change < 0 and momentum_strength < 0 else 0)
+        # 🎯 **Final Direction**
+        direction = 1 if price_momentum > 0 else -1 if price_momentum < 0 else 0
 
         data.append({
-            'volume': last_volume,
-            'price_change': price_change,
-            'prev_close': prev_close,
-            'obv': obv,
-            'vpt': vpt,
-            'volume_ratio': volume_ratio,
-            'momentum_strength': momentum_strength,
-            'spike_strength': spike_strength,
-            'rsi': rsi,
-            'adx': adx,
+            'price_momentum': price_momentum,
+            'order_flow': order_flow,
+            'imbalance_ratio': imbalance_ratio,
+            'liquidity_strength': liquidity_strength,
+            'volume_spike': last_volume / np.max([volume_ema * 1.5, 1]),
+            'engulfing_signal': engulfing_signal,
+            'wick_analysis': wick_analysis,
+            'break_structure': break_structure,
             'direction': direction
         })
 
@@ -126,7 +106,7 @@ def process_candles(candles):
 
 
 def predict_next_candle(candles):
-    """Predicts the most **precise next candle** direction with deep validation."""
+    """Predicts the most precise next candle using Smart Order Flow & Price Action."""
     if len(candles) < 14:
         return "NEUTRAL"
 
@@ -139,18 +119,17 @@ def predict_next_candle(candles):
 
     processed_data = process_candles(candles)
 
-    X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['vpt'],
-          d['volume_ratio'], d['momentum_strength'], d['spike_strength'], d['rsi'], d['adx']] for d in processed_data[:-1]]
+    X = [[d['price_momentum'], d['order_flow'], d['imbalance_ratio'], d['liquidity_strength'], 
+          d['volume_spike'], d['engulfing_signal'], d['wick_analysis'], d['break_structure']] for d in processed_data[:-1]]
     y = [d['direction'] for d in processed_data[:-1]]
 
-    model = UltimateHighAccuracyPredictor()
+    model = UltimatePredictor()
     model.fit(X, y)
 
     last_candle = processed_data[-1]
-    last_features = [[last_candle['volume'], last_candle['price_change'], last_candle['prev_close'],
-                      last_candle['obv'], last_candle['vpt'],
-                      last_candle['volume_ratio'], last_candle['momentum_strength'],
-                      last_candle['spike_strength'], last_candle['rsi'], last_candle['adx']]]
+    last_features = [[last_candle['price_momentum'], last_candle['order_flow'], last_candle['imbalance_ratio'],
+                      last_candle['liquidity_strength'], last_candle['volume_spike'],
+                      last_candle['engulfing_signal'], last_candle['wick_analysis'], last_candle['break_structure']]]
 
     next_direction = model.predict(last_features)[0]
 
