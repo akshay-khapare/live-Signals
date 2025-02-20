@@ -142,8 +142,16 @@ def predict_next_candle(candles):
 print('aaa')
 def signal(pair,offset,minute):
     
-    candles=data(pair,minute,offset)
+    candles=data("EURUSD",1,5)
     print(candles)
+    
+    url_hist1 = f'https://api-fxpractice.oanda.com/v3/instruments/{pair}/candles?granularity=M{minute}&count={offset+1}'
+
+    # response1 = requests.get(url_hist1, headers=headers).json()
+
+    # data1 = [{'time': m['time'], 'volume': m['volume'], 'open': m['mid']['o'], 
+    #           'close': m['mid']['c'], 'max': m['mid']['h'], 'min': m['mid']['l']}
+    #          for m in response1['candles'] if m['complete']]
 
     dir = predict_next_candle(candles)
     return dir
