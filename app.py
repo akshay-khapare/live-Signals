@@ -106,11 +106,18 @@ def process_candles(candles):
     
     for i in range(len(candles) - 1, -1, -1):
         current_candle = candles[i]
-        last_volume = int(current_candle['volume'])
-        current_close = float(current_candle['close'])
-        current_open = float(current_candle['open'])
-        price_change = current_close - current_open
-        prev_close = float(candles[i-1]['close']) if i > 0 else current_open
+        
+        # Safely get candle values with defaults
+        try:
+            last_volume = int(current_candle.get('volume', 0))
+            current_close = float(current_candle.get('close', 0))
+            current_open = float(current_candle.get('open', 0))
+            current_high = float(current_candle.get('close', 0))  # Use close if high not available
+            current_low = float(current_candle.get('open', 0))   # Use open if low not available
+            price_change = current_close - current_open
+            prev_close = float(candles[i-1].get('close', current_open)) if i > 0 else current_open
+        except (ValueError, TypeError, KeyError):
+            continue
         
         prices.append(current_close)
         
@@ -126,10 +133,8 @@ def process_candles(candles):
         volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
         
         # Enhanced Momentum Calculation
-        high = float(current_candle['high'])
-        low = float(current_candle['low'])
-        range_size = high - low
-        close_position = (current_close - low) / range_size if range_size != 0 else 0.5
+        range_size = current_high - current_low
+        close_position = (current_close - current_low) / range_size if range_size != 0 else 0.5
         momentum_strength = (close_position + (1 if price_change > 0 else 0)) / 2
         
         # Direction Signal with Price Action
@@ -154,15 +159,19 @@ def predict_next_candle(candles):
     if len(candles) < 3:  # Increased minimum candles requirement
         return "NEUTRAL"
 
-    # Data Preparation
-    for candle in candles:
-        candle['open'] = float(candle['open'])
-        candle['close'] = float(candle['close'])
-        candle['high'] = float(candle['high'])
-        candle['low'] = float(candle['low'])
-        candle['volume'] = int(candle['volume'])
+    # Data Preparation with safe type conversion
+    try:
+        for candle in candles:
+            candle['open'] = float(candle.get('open', 0))
+            candle['close'] = float(candle.get('close', 0))
+            candle['volume'] = int(candle.get('volume', 0))
+    except (ValueError, TypeError):
+        return "NEUTRAL"
 
     processed_data = process_candles(candles)
+    
+    if not processed_data:
+        return "NEUTRAL"
 
     X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['vpt'],
           d['volume_ratio'], d['momentum_strength']] for d in processed_data[:-1]]
