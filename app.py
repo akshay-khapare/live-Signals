@@ -5,163 +5,304 @@ import pandas as pd
 import numpy as np
 from iqoptionapi.stable_api import IQ_Option
 from time import time
+from datetime import datetime
+import math
+
 API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
 API.connect()
-def data(pair,minute,offset):
-    velas = API.get_candles(pair, (minute * 60), offset, time())
-    return velas
+# velas = API.get_candles('EURUSD', (1 * 60), 5, time())
+print(API.check_connect())
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all domains
-import numpy as np
 
-class PureVolumeMomentumPredictor:
-    def __init__(self):
-        self.trend_bias = None
+def analyze_cwrv_strategy_high_accuracy(candles):
+    """
+    Analyzes candle data based on a HIGH ACCURACY CWRV strategy, focusing on perfect entries.
+    Generates fewer, higher-confidence signals by applying stricter criteria based on CWRV Rules 1 and 3.
 
-    def fit(self, X, y):
-        """Train model using volume, momentum, trend strength, and price action."""
-        self.trend_bias = 1 if sum(y) > 0 else -1  
+    Args:
+        candles: A list of candle data dictionaries.
 
-    def predict(self, X):
-        """Predict next candle direction using multiple confluence factors."""
-        predictions = []
+    Returns:
+        A dictionary containing the signal, rule, volume status, and candle properties.
+    """
 
-        for features in X:
-            volume, price_change, prev_close, obv, vpt, volume_ratio, momentum_strength, ema_momentum = features
+    if len(candles) < 3:
+        return {'signal': 'NEUTRAL', 'rule': 'Not enough candles'}
 
-            # **Trend & Volume Confirmation**
-            obv_signal = np.sign(obv)
-            vpt_signal = np.sign(vpt)
-            volume_strength = np.sign(volume_ratio - 1)
-            momentum_signal = np.sign(momentum_strength - 0.5)
-            ema_signal = np.sign(ema_momentum - 0.5)
+    current_candle = candles[-1]
+    prev_candle = candles[-2]
+    prev_prev_candle = candles[-3]
 
-            # **Final Weighted Signal Strength**
-            total_signal = (
-                obv_signal * 0.3 +
-                vpt_signal * 0.2 +
-                volume_strength * 0.15 +
-                momentum_signal * 0.2 +
-                ema_signal * 0.25
-            )
+    current_color = 'verde' if current_candle['close'] > current_candle['open'] else 'vermelha' if current_candle['close'] < current_candle['open'] else 'doji'
+    prev_color = 'verde' if prev_candle['close'] > prev_candle['open'] else 'vermelha' if prev_candle['close'] < prev_candle['open'] else 'doji'
 
-            # **Decision Making with Noise Reduction**
-            if total_signal > 0.65:
-                predictions.append(1)  # CALL
-            elif total_signal < -0.65:
-                predictions.append(-1)  # PUT
-            else:
-                predictions.append(0)  # NEUTRAL
+    def calculate_wick_length(candle):
+        candle_range = candle['max'] - candle['min']
+        if candle_range <= 0:
+            return 0, 0
+        upper_wick = candle['max'] - max(candle['open'], candle['close'])
+        lower_wick = min(candle['open'], candle['close']) - candle['min']
+        return (upper_wick / candle_range) * 100, (lower_wick / candle_range) * 100
 
-        return predictions
+    current_upper_wick_perc, current_lower_wick_perc = calculate_wick_length(current_candle)
+    prev_upper_wick_perc, prev_lower_wick_perc = calculate_wick_length(prev_candle)
 
+    previous_volumes = [prev_prev_candle['volume'], prev_candle['volume']]
+    avg_volume = np.mean(previous_volumes) if previous_volumes else 0
+    volume_validation_threshold = 1.25 # Stricter validation: 25% above average
+    volume_anomaly_threshold = 0.75  # Stricter anomaly: 25% below average
 
-def process_candles(candles):
-    """Processes candle data for accurate volume & momentum analysis."""
-    data = []
-    obv, vpt = 0, 0
-    ema_alpha = 0.15
-    volume_ema = int(candles[0]['volume'])
-    ema_momentum = 0.5
+    volume_status = "neutral"
+    if current_candle['volume'] > avg_volume * volume_validation_threshold:
+        volume_status = "validation"
+    elif current_candle['volume'] < avg_volume * volume_anomaly_threshold:
+        volume_status = "anomaly"
 
-    for i in range(len(candles) - 1, -1, -1):
-        last_volume = int(candles[i]['volume'])
-        price_change = float(candles[i]['close']) - float(candles[i]['open'])
-        prev_close = float(candles[i-1]['close']) if i > 0 else float(candles[i]['open'])
+    signal = 'NEUTRAL'
+    rule_applied = 'None'
 
-        # **OBV Calculation**
-        obv += last_volume if price_change > 0 else -last_volume
+    # --- HIGH ACCURACY Rule 1:  Very Strict Similar Wicks (Concept-1 & Concept-2) ---
+    if current_color == prev_color and current_color != 'doji': # Rule 1 still applies to same color (non-doji)
 
-        # **VPT Calculation**
-        price_ratio = price_change / prev_close if prev_close != 0 else 0
-        vpt += (price_ratio * last_volume)
+        if current_upper_wick_perc > 60 and prev_upper_wick_perc > 60: # VERY Long Upper Wicks (> 60% - much stricter)
+            rule_applied = 'Rule 1 HA - Very Long Similar Upper Wicks'
+            if volume_status == 'validation': # Volume VALIDATION is KEY for high accuracy continuation
+                signal = 'PUT' if current_color == 'vermelha' else 'CALL' # Continuation
+            elif volume_status == 'anomaly': # Volume ANOMALY for high accuracy reversal
+                signal = 'CALL' if current_color == 'vermelha' else 'PUT' # Reversal
 
-        # **Volume EMA Update**
-        volume_ema = (last_volume * ema_alpha) + (volume_ema * (1 - ema_alpha))
-
-        # **Volume Ratio Calculation**
-        volume_ratio = last_volume / volume_ema if volume_ema != 0 else 1
-
-        # **Momentum Analysis**
-        momentum_strength = 1 if price_change > 0 else 0
-
-        # **EMA Momentum Calculation**
-        ema_momentum = (ema_alpha * momentum_strength) + ((1 - ema_alpha) * ema_momentum)
-
-        # **Direction Signal**
-        direction = 1 if price_change > 0 else (-1 if price_change < 0 else 0)
-
-        data.append({
-            'volume': last_volume,
-            'price_change': price_change,
-            'prev_close': prev_close,
-            'obv': obv,
-            'vpt': vpt,
-            'volume_ratio': volume_ratio,
-            'momentum_strength': momentum_strength,
-            'ema_momentum': ema_momentum,
-            'direction': direction
-        })
-
-    return data[::-1]
+        elif current_lower_wick_perc > 60 and prev_lower_wick_perc > 60: # VERY Long Lower Wicks (> 60% - much stricter)
+            rule_applied = 'Rule 1 HA - Very Long Similar Lower Wicks'
+            if volume_status == 'validation': # Volume VALIDATION is KEY for high accuracy continuation
+                signal = 'CALL' if current_color == 'verde' else 'PUT' # Continuation
+            elif volume_status == 'anomaly': # Volume ANOMALY for high accuracy reversal
+                signal = 'PUT' if current_color == 'verde' else 'CALL' # Reversal
 
 
-def predict_next_candle(candles):
-    """Predicts the next candle direction with maximum accuracy."""
-    if len(candles) < 2:
-        return "NEUTRAL"
-
-    # Reverse order so that last entry is the most recent candle
-    candles = candles[::-1]
-
-    for candle in candles:
-        candle['open'] = float(candle['open'])
-        candle['close'] = float(candle['close'])
-        candle['volume'] = int(candle['volume'])
-
-    processed_data = process_candles(candles)
-
-    X = [[d['volume'], d['price_change'], d['prev_close'], d['obv'], d['vpt'],
-          d['volume_ratio'], d['momentum_strength'], d['ema_momentum']] for d in processed_data[:-1]]
-    y = [d['direction'] for d in processed_data[:-1]]
-
-    model = PureVolumeMomentumPredictor()
-    model.fit(X, y)
-
-    last_candle = processed_data[-1]
-    last_features = [[last_candle['volume'], last_candle['price_change'], last_candle['prev_close'],
-                      last_candle['obv'], last_candle['vpt'],
-                      last_candle['volume_ratio'], last_candle['momentum_strength'], last_candle['ema_momentum']]]
-
-    next_direction = model.predict(last_features)[0]
-
-    return "CALL" if next_direction == 1 else "PUT" if next_direction == -1 else "NEUTRAL"
+    # --- HIGH ACCURACY Rule 3:  Very Strict Small Wicks with Anomaly (Concept-2 - Reversal focus) ---
+    # Rule 3 is made VERY selective and focused on REVERSAL signals with VOLUME ANOMALY for high accuracy
+    if signal == 'NEUTRAL':  # Apply Rule 3 ONLY if Rule 1 (High Accuracy) didn't give a signal
+        if current_upper_wick_perc < 10 and current_lower_wick_perc < 10: # EXTREMELY Small wicks (< 10% - very strict)
+            rule_applied = 'Rule 3 HA - Extremely Small Wicks - Anomaly Reversal'
+            if volume_status == 'anomaly': # Volume ANOMALY is KEY for high accuracy REVERSAL in Rule 3
+                signal = 'PUT' if current_color == 'verde' else 'CALL' # Reversal signal based on volume anomaly with small wicks
+            # Validation with small wicks is intentionally ignored in this HIGH ACCURACY version to reduce signals
 
 
+    return signal
+    # {'signal': signal, 'rule': rule_applied, 'volume_status': volume_status,
+    #         'current_color': current_color, 'prev_color': prev_color,
+    #         'current_upper_wick_perc': current_upper_wick_perc, 'current_lower_wick_perc': current_lower_wick_perc,
+    #         'prev_upper_wick_perc': prev_upper_wick_perc, 'prev_lower_wick_perc': prev_lower_wick_perc}
 
-print('aaa')
-def signal(pair,offset,minute):
+def calculate_wick_length(candle):
+    candle_range = candle['max'] - candle['min']
+    if candle_range <= 0:
+        return 0, 0
+    upper_wick = candle['max'] - max(candle['open'], candle['close'])
+    lower_wick = min(candle['open'], candle['close']) - candle['min']
+    return (upper_wick / candle_range) * 100, (lower_wick / candle_range) * 100
+
+def get_volume_validation_cwrv(prev_candle, current_candle):
+    """
+    Implements CWRV's definition of volume validation and anomaly.
+
+    Args:
+        prev_candle: The previous candle (2nd candle).
+        current_candle: The current candle (3rd candle).
+
+    Returns:
+        "validation", "anomaly", or "neutral".
+    """
+    if prev_candle['cor'] == 'verde':  # 2nd candle is green
+        if current_candle['volume'] > prev_candle['volume'] and current_candle['cor'] == 'verde':
+            return "validation"  # Increasing volume, same direction
+        elif current_candle['volume'] < prev_candle['volume'] and current_candle['cor'] == 'verde':
+          return "validation"
+        elif current_candle['volume'] > prev_candle['volume'] and current_candle['cor'] == 'vermelha':
+            return "anomaly"  # Increasing volume, opposite direction.
+        elif current_candle['volume'] < prev_candle['volume'] and current_candle['cor'] == 'vermelha':
+            return "anomaly"
+        else:
+            return "neutral" #added for high accuracy no trade condition.
+
+    elif prev_candle['cor'] == 'vermelha':  # 2nd candle is red
+        if current_candle['volume'] > prev_candle['volume'] and current_candle['cor'] == 'vermelha':
+            return "validation"  # Increasing volume, same direction.
+        elif current_candle['volume'] < prev_candle['volume'] and current_candle['cor'] == 'vermelha':
+            return "validation"
+        elif current_candle['volume'] > prev_candle['volume'] and current_candle['cor'] == 'verde':
+            return "anomaly"    # Increasing volume, opposite direction.
+        elif current_candle['volume'] < prev_candle['volume'] and current_candle['cor'] == 'verde':
+            return "anomaly"
+        else:
+            return "neutral" #added for high accuracy
+
+    else:  # 2nd candle is doji (handle as neutral or according to your preference)
+        return "neutral"
+
+def is_marubozu(candle, threshold=2):
+    upper_wick_perc, lower_wick_perc = calculate_wick_length(candle)
+    return upper_wick_perc <= threshold and lower_wick_perc <= threshold
+
+def cwrv_predict_high_accuracy(data):
+    """
+    Predicts the next candle direction with high accuracy using CWRV rules.
+    """
+    if len(data) < 3:  # Need at least 3 candles for analysis
+        return {'prediction': 'NEUTRAL', 'confidence': 0, 'rules_applied': ['Not enough data']}
+
+    candles = []  # Add wick percentages and color
+    for x in data:
+        x.update({'cor': 'verde' if x['open'] < x['close']
+                                else 'vermelha' if x['open'] > x['close'] else 'doji'})
+        upper_wick, lower_wick = calculate_wick_length(x)
+        x.update({'upper_wick_perc': upper_wick, 'lower_wick_perc': lower_wick})
+        candles.append(x)
+
+    current_candle = candles[-1]  # Most recent candle
+    prev_candle = candles[-2]    # Second most recent candle
+    prev_prev_candle = candles[-3] # Third most recent candle
+
+    # CWRV Volume Validation/Anomaly (Corrected Implementation)
+    volume_result = get_volume_validation_cwrv(prev_candle, current_candle)
+
+    rules_applied = []
+    prediction = 'NEUTRAL'
+    confidence = 0.0  # Start with low confidence
+
+    # --- High-Accuracy Rule 1: Similar Wicks (Concept 1) ---
+    if prev_candle['cor'] == current_candle['cor']:
+        # Strong Similar Upper Wicks
+        if prev_candle['upper_wick_perc'] > 50 and current_candle['upper_wick_perc'] > 50  and prev_candle['lower_wick_perc'] < 15 and current_candle['lower_wick_perc'] < 15:
+            rules_applied.append("Rule 1 - Strong Similar Upper Wicks")
+            if volume_result == "validation":
+                prediction = 'CALL' if current_candle['cor'] == 'verde' else 'PUT'
+                confidence = 0.9
+            # No anomaly trade for high accuracy.
+
+        # Strong Similar Lower Wicks
+        elif prev_candle['lower_wick_perc'] > 50 and current_candle['lower_wick_perc'] > 50 and prev_candle['upper_wick_perc'] < 15 and current_candle['upper_wick_perc'] < 15:
+            rules_applied.append("Rule 1 - Strong Similar Lower Wicks")
+            if volume_result == "validation":
+                prediction = 'CALL' if current_candle['cor'] == 'verde' else 'PUT'
+                confidence = 0.9
+            # No anomaly trade for high accuracy
+
+     # --- High-Accuracy Rule 1: One-Sided Wicks (Concept 2) ---
+    if prediction == 'NEUTRAL': #check if already got signals from above rules
+      if prev_candle['cor'] == current_candle['cor']:
+        # Strong Upper Wick Only
+        if prev_candle['upper_wick_perc'] > 60 and current_candle['upper_wick_perc'] > 60 and prev_candle['lower_wick_perc'] < 10 and current_candle['lower_wick_perc'] < 10:
+            rules_applied.append("Rule 1 - Strong One-Sided Upper Wick")
+            if volume_result == "validation":
+                prediction = 'CALL' if current_candle['cor'] == 'verde' else 'PUT'
+                confidence = 0.9
+
+        # Strong Lower Wick Only
+        elif prev_candle['lower_wick_perc'] > 60 and current_candle['lower_wick_perc'] > 60 and prev_candle['upper_wick_perc'] < 10 and current_candle['upper_wick_perc'] < 10:
+            rules_applied.append("Rule 1 - Strong One-Sided Lower Wick")
+            if volume_result == "validation":
+                prediction = 'CALL' if current_candle['cor'] == 'verde' else 'PUT'
+                confidence = 0.9
+
+
+    # --- High-Accuracy Rule 1: Opposite Wicks (Concept 3) ---
+    if prediction == 'NEUTRAL':
+        if prev_candle['upper_wick_perc'] > 50 and current_candle['lower_wick_perc'] > 50:
+            rules_applied.append("Rule 1 - Opposite Wicks (Down, Up)")
+            if volume_result == "anomaly":  # Opposite logic for Opposite Wicks
+                prediction = 'CALL' if current_candle['cor'] == 'verde' else 'PUT'
+                confidence = 0.9  # High confidence for strong anomaly
+        elif prev_candle['lower_wick_perc'] > 50 and current_candle['upper_wick_perc'] > 50:
+            rules_applied.append("Rule 1 - Opposite Wicks (Up, Down)")
+            if volume_result == "anomaly":
+                prediction = 'CALL' if current_candle['cor'] == 'verde' else 'PUT'
+                confidence = 0.9  # High confidence for strong anomaly
+
+      # --- Rule 1: Opposite Wicks Colour Change ---
+    if prediction == 'NEUTRAL':
+        if prev_candle['cor'] != current_candle['cor']: #color change
+            if prev_candle['upper_wick_perc'] > 50 and current_candle['lower_wick_perc'] > 50:
+                rules_applied.append("Rule 1 - Opposite Wicks Colour Change (Down, Up)")
+                if volume_result == "validation":  # Opposite logic for Opposite Wicks
+                    prediction = 'CALL' if current_candle['cor'] == 'verde' else 'PUT' #continue
+                    confidence = 0.9
+
+            elif prev_candle['lower_wick_perc'] > 50 and current_candle['upper_wick_perc'] > 50:
+                rules_applied.append("Rule 1 - Opposite Wicks Colour Change (Up, Down)")
+                if volume_result == "validation":
+                    prediction = 'CALL' if current_candle['cor'] == 'verde' else 'PUT'
+                    confidence = 0.9
+
+
+
+    # --- High-Accuracy Rule 2: Color Change (Concepts 1 & 2) ---
+    if prediction == 'NEUTRAL':
+        if prev_prev_candle['cor'] != prev_candle['cor'] and prev_candle['cor'] != current_candle['cor']:
+            rules_applied.append("Rule 2 - Strong Color Change")
+            # Check for increasing volume of the *opposite* party.
+            if prev_prev_candle['cor'] == 'verde': #previous candle was green
+                if current_candle['volume'] > prev_candle['volume'] and current_candle['cor'] == 'vermelha':
+                    prediction = 'PUT'  # Expect a red candle
+                    confidence = 0.9
+            elif prev_prev_candle['cor'] == 'vermelha':#previous candle was red
+                if current_candle['volume'] > prev_candle['volume'] and current_candle['cor'] == 'verde':
+                    prediction = 'CALL'  # Expect a green candle
+                    confidence = 0.9
+
+
+    # --- High-Accuracy Marubozu Followed by Confirmation ---
+    if prediction == 'NEUTRAL':
+      if is_marubozu(prev_candle) and not is_marubozu(current_candle): #check for prev candle
+        rules_applied.append("Marubozu with Confirmation")
+        if prev_candle['cor'] == 'verde': #previous candle marubozu and green
+            if current_candle['cor'] == 'vermelha' and current_candle['volume'] > prev_candle['volume']:
+                prediction = 'PUT'
+                confidence = 0.95
+        elif prev_candle['cor'] == 'vermelha':#previous candle marubozu and red
+            if current_candle['cor'] == 'verde' and current_candle['volume'] > prev_candle['volume']:
+                prediction = 'CALL'
+                confidence = 0.95
+
+      if is_marubozu(current_candle): #check current candle
+        if current_candle['cor'] == 'verde':
+            prediction = 'neutral'
+            confidence = 0.8
+        else:
+            prediction = 'neutral'
+            confidence = 0.8
+
+
+    if not rules_applied:
+        rules_applied.append("No High-Accuracy Rule Triggered")
+
+    return prediction
+    # {'prediction': prediction, 'confidence': confidence, 'rules_applied': rules_applied}
+
+pairs=['EURUSD','GBPUSD', 'AUDUSD', 'AUDJPY','EURJPY','USDJPY','GBPJPY','GBPAUD', 'AUDCAD','USDCHF','GBPCHF','CADJPY','EURCAD','USDCAD','CHFJPY']
+def analyze_all_signals():
+    API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
+    API.connect()
     
-    candles=data(pair,minute,offset)
-    print(candles)
-    dir = predict_next_candle(candles)
-    return dir
+    all_signals = {}
+    for pair in pairs:
+        velas = API.get_candles(pair, (1 * 60), 6, time())
+        signal = cwrv_predict_high_accuracy(velas)
+        all_signals[pair] = signal
+    
+    return all_signals
 
 @app.route("/")
 def home():
     return jsonify({"message": "API is working!"})
-
-@app.route("/trading-signal", methods=["GET"])
+# 
+@app.route("/signal", methods=["GET"])
 def get_trading_signal():
     try:
-        pair = request.args.get("pair")
-        minute = request.args.get("minute")
-        offset = int(request.args.get("offset"))
-        if not pair:
-            return jsonify({"error": "Missing 'pair' parameter"}), 400
-        
-        dir = signal(pair,offset,minute)
-        data={"pair": pair, "signal": dir}
+        dir = analyze_all_signals()
+        data={"signal": dir}
         return jsonify(data)
     
     except Exception as e:
