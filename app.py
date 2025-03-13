@@ -63,10 +63,10 @@ pairs=['EURUSD','GBPUSD', 'AUDUSD', 'AUDJPY','EURJPY','USDJPY','GBPJPY','GBPAUD'
 #     if same_color and wicks_similar:
 #         if validation:
 #             # Continuation: predict same direction as last candle
-#             return 'CALL' if last_is_bullish else 'PUT'
+#             return "CALL" if last_is_bullish else "PUT"
 #         elif anomaly:
 #             # Reversal: predict opposite direction of last candle
-#             return 'PUT' if last_is_bullish else 'CALL'
+#             return "PUT" if last_is_bullish else "CALL"
     
 #     # If conditions are not met, return no signal
 #     return 'no_signal'
@@ -110,139 +110,110 @@ pairs=['EURUSD','GBPUSD', 'AUDUSD', 'AUDJPY','EURJPY','USDJPY','GBPJPY','GBPAUD'
 #     # if (is_lower_wick_bigger(candle2) and is_upper_wick_bigger(candle3)) or \
 #     #    (is_upper_wick_bigger(candle2) and is_lower_wick_bigger(candle3)):
 #     #     if is_validation(candle2, candle3):
-#     #         return 'PUT' if is_bullish(candle3) else 'CALL'  # Reversal
+#     #         return "PUT" if is_bullish(candle3) else "CALL"  # Reversal
 #         # elif is_anomaly(candle2, candle3):
-#         #     return 'CALL' if is_bullish(candle3) else 'PUT'  # Continuation
+#         #     return "CALL" if is_bullish(candle3) else "PUT"  # Continuation
 
 #     # # Rule 1: Concept 4 - Opposite Wicks Color Change ✅
 #     if ((is_lower_wick_bigger(candle2) and is_upper_wick_bigger(candle3)) or
 #         (is_upper_wick_bigger(candle2) and is_lower_wick_bigger(candle3))) and \
 #        (is_bullish(candle2) != is_bullish(candle3)):
 #         # if is_validation(candle2, candle3):
-#         #     return 'CALL' if is_bullish(candle3) else 'PUT'  # Continuation
+#         #     return "CALL" if is_bullish(candle3) else "PUT"  # Continuation
 #         if is_anomaly(candle2, candle3):
-#             return 'PUT' if is_bullish(candle3) else 'CALL'  # Reversal
+#             return "PUT" if is_bullish(candle3) else "CALL"  # Reversal
 
 #     return 'NEUTRAL'  # No strategy matched
 
 
 
-#     return None
-
-
-def is_bullish(candle):
-    """Checks if a candle is bullish (green)."""
-    return candle['close'] > candle['open']
-
-def is_bearish(candle):
-    """Checks if a candle is bearish (red)."""
-    return candle['close'] < candle['open']
-
-def get_upper_wick_length(candle):
-    """Calculates the upper wick length of a candle."""
-    return candle['max'] - max(candle['open'], candle['close'])
-
-def get_lower_wick_length(candle):
-    """Calculates the lower wick length of a candle."""
-    return min(candle['open'], candle['close']) - candle['min']
-
-def get_candle_body_length(candle):
-    """Calculates the body length of a candle."""
-    return abs(candle['close'] - candle['open']) or 1e-10  # Avoid division by zero
-
-def apply_cwrv_123_strategy(data):
-    """
-    Applies ONLY the CWRV 123 Official and Unofficial strategies as described
-    in the PDF (Page 18), with enhancements to improve accuracy.
-
-    Args:
-        data: A list of candle data (oldest to newest). Needs at least 3 candles.
-
-    Returns:
-        A string: "CALL", "PUT", or "NEUTRAL" indicating the predicted direction
-                 of the next candle based on refined CWRV 123 rules.
-                 Returns "NEUTRAL" if no pattern is found or insufficient data.
-    """
-    if len(data) < 3:
-        return "NEUTRAL"
-
-    candle_before_previous = data[-3]  # Candle 1
-    previous_candle = data[-2]         # Candle 2
-    current_candle = data[-1]          # Candle 3
-
-    # --- Official CWRV 123 Pattern (Marubozu) ---
-    if (is_bullish(candle_before_previous) and
-        is_bullish(previous_candle) and
-        is_bearish(current_candle) and
-        current_candle['volume'] > previous_candle['volume'] * 1.1):  # Volume 10% higher
-
-        # Stricter Marubozu check for candle 1 (wicks < 10% of body)
-        is_marubozu_candle1 = (get_upper_wick_length(candle_before_previous) < get_candle_body_length(candle_before_previous) * 0.1 and
-                               get_lower_wick_length(candle_before_previous) < get_candle_body_length(candle_before_previous) * 0.1)
-
-        # Check if candle 2 has a larger body than candle 1
-        is_strong_momentum = get_candle_body_length(previous_candle) > get_candle_body_length(candle_before_previous)
-
-        if is_marubozu_candle1 and is_strong_momentum:
-            return "PUT"  # Candle 4 will be bearish (Binary option: PUT)
-
-    # --- Unofficial CWRV 123 Pattern (Normal Candle) ---
-    if (is_bearish(candle_before_previous) and
-        is_bearish(previous_candle) and
-        is_bullish(current_candle) and
-        current_candle['volume'] > previous_candle['volume'] * 1.1):  # Volume 10% higher
-
-        # Ensure candle 1 is a normal candle with a body
-        is_normal_candle1 = get_candle_body_length(candle_before_previous) > 0
-
-        # Check if candle 2 has a larger body than candle 1
-        is_strong_momentum = get_candle_body_length(previous_candle) > get_candle_body_length(candle_before_previous)
-
-        if is_normal_candle1 and is_strong_momentum:
-            return "CALL"  # Candle 4 will be bullish (Binary option: CALL)
-
-    return "NEUTRAL"  # No CWRV 123 pattern found
+#     return '''None'''
 
 
 
+def calculate_candle_properties(candle):
+    """Calculate wick lengths, body size, and price action strength."""
+    upper_wick = candle['max'] - max(candle['open'], candle['close'])
+    lower_wick = min(candle['open'], candle['close']) - candle['min']
+    body_size = abs(candle['close'] - candle['open'])
+    total_range = candle['max'] - candle['min'] + 1e-6  # Avoid zero division
+    
+    return {
+        'upper_wick': upper_wick,
+        'lower_wick': lower_wick,
+        'body_size': body_size,
+        'total_range': total_range,
+        'color': 'green' if candle['close'] > candle['open'] else 'red',
+        'buyer_pressure': lower_wick / total_range,
+        'seller_pressure': upper_wick / total_range,
+        'strength': body_size / total_range  # Measures candle dominance
+    }
 
+def analyze_volume_source(candles):
+    """Determine if volume increase is due to buyers or sellers."""
+    last_candle = candles[-1]
+    prev_candle = candles[-2]
+    
+    upper_wick, lower_wick = calculate_candle_properties(last_candle)['upper_wick'], calculate_candle_properties(last_candle)['lower_wick']
+    volume_increasing = last_candle['volume'] > prev_candle['volume']
 
+    if volume_increasing:
+        if upper_wick > lower_wick:  # Sellers caused the volume increase
+            return "Sellers"
+        elif lower_wick > upper_wick:  # Buyers caused the volume increase
+            return "Buyers"
+    
+    return "Neutral"
 
+def detect_momentum(candles):
+    """Check if market momentum is aligning with price action."""
+    recent_closes = [c['close'] for c in candles[-4:]]  # Last 4 closes
+    up_trend = recent_closes[-1] > recent_closes[-2] > recent_closes[-3]
+    down_trend = recent_closes[-1] < recent_closes[-2] < recent_closes[-3]
+    
+    return "UP" if up_trend else "DOWN" if down_trend else "NEUTRAL"
 
+def detect_reversal(candles):
+    """Identify possible reversals based on wick dominance."""
+    last_candle = calculate_candle_properties(candles[-1])
+    prev_candle = calculate_candle_properties(candles[-2])
 
+    if last_candle['lower_wick'] > last_candle['body_size'] * 1.2 and prev_candle['lower_wick'] > prev_candle['body_size'] * 1.0:
+        return "POSSIBLE UP REVERSAL"
+    
+    if last_candle['upper_wick'] > last_candle['body_size'] * 1.2 and prev_candle['upper_wick'] > prev_candle['body_size'] * 1.0:
+        return "POSSIBLE DOWN REVERSAL"
+    
+    return "NO REVERSAL"
 
+def predict_next_candle(candles):
+    """Apply a multi-confirmation strategy for high-accuracy signals."""
+    if len(candles) < 6:
+        return "NO TRADE - Insufficient Data"
 
+    last_candle = calculate_candle_properties(candles[-1])
+    prev_candle = calculate_candle_properties(candles[-2])
+    volume_source = analyze_volume_source(candles)
+    momentum = detect_momentum(candles)
+    reversal = detect_reversal(candles)
 
+    # BUY SIGNAL (CALL)
+    if (last_candle['buyer_pressure'] > last_candle['seller_pressure'] and
+        prev_candle['buyer_pressure'] > prev_candle['seller_pressure'] and
+        last_candle['lower_wick'] > last_candle['body_size'] * 0.6 and
+        volume_source == "Buyers" and
+        (momentum == "UP" or reversal == "POSSIBLE UP REVERSAL")):
+        return "CALL"
 
+    # SELL SIGNAL (PUT)
+    if (last_candle['seller_pressure'] > last_candle['buyer_pressure'] and
+        prev_candle['seller_pressure'] > prev_candle['buyer_pressure'] and
+        last_candle['upper_wick'] > last_candle['body_size'] * 0.6 and
+        volume_source == "Sellers" and
+        (momentum == "DOWN" or reversal == "POSSIBLE DOWN REVERSAL")):
+        return "PUT"
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    return "NO TRADE"
 
 ################################################################################
 
@@ -257,7 +228,7 @@ def analyze_all_signals():
         # velas5 = API.get_candles(pair, (2 * 60), 100, time())
         velas.pop() # remove last uncomplete candle data
         # velas5.pop() # remove last uncomplete candle data
-        signal = apply_cwrv_123_strategy(velas)
+        signal = predict_next_candle(velas)
         # signal5 = apply_cwrv_123_strategy(velas5)
         all_signals[pair] = signal 
         # if signal ==signal5 else 'NEUTRAL'
