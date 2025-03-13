@@ -252,11 +252,11 @@ def analyze_all_signals():
     for pair in pairs:
         # Get 100 candles for better pattern recognition
         velas = API.get_candles(pair, (1 * 60), 100, time())
-        velas5 = API.get_candles(pair, (2 * 60), 100, time())
+        # velas5 = API.get_candles(pair, (2 * 60), 100, time())
         velas.pop() # remove last uncomplete candle data
-        velas5.pop() # remove last uncomplete candle data
+        # velas5.pop() # remove last uncomplete candle data
         signal = apply_cwrv_123_strategy(velas)
-        signal5 = apply_cwrv_123_strategy(velas5)
+        # signal5 = apply_cwrv_123_strategy(velas5)
         all_signals[pair] = signal 
         # if signal ==signal5 else 'NEUTRAL'
     
