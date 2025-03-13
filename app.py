@@ -129,6 +129,7 @@ pairs=['EURUSD','GBPUSD', 'AUDUSD', 'AUDJPY','EURJPY','USDJPY','GBPJPY','GBPAUD'
 
 #     return None
 
+
 def is_bullish(candle):
     """Checks if a candle is bullish (green)."""
     return candle['close'] > candle['open']
@@ -147,56 +148,60 @@ def get_lower_wick_length(candle):
 
 def get_candle_body_length(candle):
     """Calculates the body length of a candle."""
-    return abs(candle['close'] - candle['open'])
-
+    return abs(candle['close'] - candle['open']) or 1e-10  # Avoid division by zero
 
 def apply_cwrv_123_strategy(data):
     """
-    Applies ONLY the CWRV 123 Official and Unofficial strategies as
-    described in the PDF (Page 18).
+    Applies ONLY the CWRV 123 Official and Unofficial strategies as described
+    in the PDF (Page 18), with enhancements to improve accuracy.
 
     Args:
         data: A list of candle data (oldest to newest). Needs at least 3 candles.
 
     Returns:
-        A string: "CALL", "PUT", or "NEUTRAL" indicating the predicted
-                 direction of the next candle based on CWRV 123 rules.
+        A string: "CALL", "PUT", or "NEUTRAL" indicating the predicted direction
+                 of the next candle based on refined CWRV 123 rules.
                  Returns "NEUTRAL" if no pattern is found or insufficient data.
     """
     if len(data) < 3:
         return "NEUTRAL"
 
-    candle_before_previous = data[-3]
-    previous_candle = data[-2]
-    current_candle = data[-1]
+    candle_before_previous = data[-3]  # Candle 1
+    previous_candle = data[-2]         # Candle 2
+    current_candle = data[-1]          # Candle 3
 
     # --- Official CWRV 123 Pattern (Marubozu) ---
-    is_cwrv_123_official_pattern = False
-    if is_bullish(candle_before_previous) and is_bullish(previous_candle) and is_bearish(current_candle) and current_candle['volume'] > previous_candle['volume']:  # Candle 3 volume high
+    if (is_bullish(candle_before_previous) and
+        is_bullish(previous_candle) and
+        is_bearish(current_candle) and
+        current_candle['volume'] > previous_candle['volume'] * 1.1):  # Volume 10% higher
 
-        # Relaxed Marubozu check for candle 1 (less strict than before)
-        is_marubozu_candle1 = (get_upper_wick_length(candle_before_previous) < get_candle_body_length(candle_before_previous) * 0.25 and
-                               get_lower_wick_length(candle_before_previous) < get_candle_body_length(candle_before_previous) * 0.25) # Increased threshold to 0.25
+        # Stricter Marubozu check for candle 1 (wicks < 10% of body)
+        is_marubozu_candle1 = (get_upper_wick_length(candle_before_previous) < get_candle_body_length(candle_before_previous) * 0.1 and
+                               get_lower_wick_length(candle_before_previous) < get_candle_body_length(candle_before_previous) * 0.1)
 
-        if is_marubozu_candle1:  # Official CWRV (Marubozu candle 1)
-            is_cwrv_123_official_pattern = True
-            return "CALL"  # Candle 4 will be Red (Binary option: PUT)
+        # Check if candle 2 has a larger body than candle 1
+        is_strong_momentum = get_candle_body_length(previous_candle) > get_candle_body_length(candle_before_previous)
 
+        if is_marubozu_candle1 and is_strong_momentum:
+            return "PUT"  # Candle 4 will be bearish (Binary option: PUT)
 
     # --- Unofficial CWRV 123 Pattern (Normal Candle) ---
-    is_cwrv_123_unofficial_pattern = False
-    if is_bearish(candle_before_previous) and is_bearish(previous_candle) and is_bullish(current_candle) and current_candle['volume'] > previous_candle['volume']:  # Candle 3 volume high
+    if (is_bearish(candle_before_previous) and
+        is_bearish(previous_candle) and
+        is_bullish(current_candle) and
+        current_candle['volume'] > previous_candle['volume'] * 1.1):  # Volume 10% higher
 
-        is_normal_candle1 = get_candle_body_length(candle_before_previous) > 0  # Candle 1 is just a normal candle (has a body)
+        # Ensure candle 1 is a normal candle with a body
+        is_normal_candle1 = get_candle_body_length(candle_before_previous) > 0
 
-        if is_normal_candle1:  # Unofficial CWRV (Normal candle 1)
-            is_cwrv_123_unofficial_pattern = True
-            return "PUT"  # Candle 4 will be Green (Binary option: CALL)
+        # Check if candle 2 has a larger body than candle 1
+        is_strong_momentum = get_candle_body_length(previous_candle) > get_candle_body_length(candle_before_previous)
+
+        if is_normal_candle1 and is_strong_momentum:
+            return "CALL"  # Candle 4 will be bullish (Binary option: CALL)
 
     return "NEUTRAL"  # No CWRV 123 pattern found
-
-
-
 
 
 
