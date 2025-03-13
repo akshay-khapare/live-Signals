@@ -6,9 +6,6 @@ import numpy as np
 from iqoptionapi.stable_api import IQ_Option
 from time import time
 from datetime import datetime
-import math
-from typing import List, Dict, Tuple, Optional, Union
-from scipy.stats import linregress
 
 API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
 API.connect()
