@@ -250,5 +250,25 @@ def get_signall():
         print(e)
         return jsonify({"error": "An error occurred", "details": str(e)}), 500
 
+@app.route("/candles", methods=["GET"])
+def get_candles():
+    try:
+        pair = request.args.get("pair", pairs[0])
+        timeframe = int(request.args.get("timeframe", 1))
+        if not pair:
+            return jsonify({"error": "Missing pair parameter"}), 400
+        
+        API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
+        API.connect()
+        
+        velas = API.get_candles(pair, (timeframe * 60), 100, time())
+        velas.pop()  # Remove last incomplete candle
+        
+        return jsonify({"candles": velas})
+    
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "An error occurred", "details": str(e)}), 500
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
