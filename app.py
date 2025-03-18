@@ -18,118 +18,6 @@ CORS(app)  # Enable CORS for all domains
 
 pairs=['EURUSD','GBPUSD', 'AUDUSD', 'AUDJPY','EURJPY','USDJPY','GBPJPY','GBPAUD', 'AUDCAD','USDCHF','GBPCHF','CADJPY','EURCAD','USDCAD','CHFJPY' ,'EURGBP' , 'AUDCHF' ,'EURAUD' , 'EURCHF','GBPCAD']
 
-# def predict_next_candle_direction(candles):
-#     # Check if there are at least 3 candles to compare volumes
-#     if len(candles) < 3:
-#         return 'no_signal'
-    
-#     # Extract the last two candles
-#     last_candle = candles[-1]  # Most recent candle
-#     second_last_candle = candles[-2]  # Second-to-last candle
-#     third_last_candle = candles[-3]  # Third-to-last candle for volume comparison
-    
-#     # Calculate wicks for the last candle
-#     last_upper_wick = last_candle['max'] - max(last_candle['open'], last_candle['close'])
-#     last_lower_wick = min(last_candle['open'], last_candle['close']) - last_candle['min']
-    
-#     # Calculate wicks for the second-to-last candle
-#     second_upper_wick = second_last_candle['max'] - max(second_last_candle['open'], second_last_candle['close'])
-#     second_lower_wick = min(second_last_candle['open'], second_last_candle['close']) - second_last_candle['min']
-    
-#     # Determine candle directions (bullish or bearish)
-#     last_is_bullish = last_candle['close'] > last_candle['open']
-#     second_is_bullish = second_last_candle['close'] > second_last_candle['open']
-    
-#     # Check if candles are the same color
-#     same_color = last_is_bullish == second_is_bullish
-    
-#     # Determine wick similarity
-#     last_upper_dominant = last_upper_wick > last_lower_wick
-#     second_upper_dominant = second_upper_wick > second_lower_wick
-#     wicks_similar = (last_upper_dominant and second_upper_dominant) or \
-#                     (not last_upper_dominant and not second_upper_dominant)
-    
-#     # Check volume validation or anomaly
-#     volume_second_to_third = second_last_candle['volume'] - third_last_candle['volume']
-#     volume_last_to_second = last_candle['volume'] - second_last_candle['volume']
-#     # Validation: both increase or both decrease
-#     validation = (volume_second_to_third > 0 and volume_last_to_second > 0) or \
-#                  (volume_second_to_third < 0 and volume_last_to_second < 0)
-#     # Anomaly: one increases, the other decreases
-#     anomaly = (volume_second_to_third > 0 and volume_last_to_second < 0) or \
-#               (volume_second_to_third < 0 and volume_last_to_second > 0)
-    
-#     # Apply the strategy
-#     if same_color and wicks_similar:
-#         if validation:
-#             # Continuation: predict same direction as last candle
-#             return "CALL" if last_is_bullish else "PUT"
-#         elif anomaly:
-#             # Reversal: predict opposite direction of last candle
-#             return "PUT" if last_is_bullish else "CALL"
-    
-#     # If conditions are not met, return no signal
-#     return 'no_signal'
-
-
-# def is_bullish(candle):
-#     return candle['close'] > candle['open']
-
-# def is_bearish(candle):
-#     return candle['close'] < candle['open']
-
-# def get_upper_wick(candle):
-#     return candle['max'] - max(candle['open'], candle['close'])
-
-# def get_lower_wick(candle):
-#     return min(candle['open'], candle['close']) - candle['min']
-
-# def is_upper_wick_bigger(candle):
-#     return get_upper_wick(candle) > get_lower_wick(candle)
-
-# def is_lower_wick_bigger(candle):
-#     return get_lower_wick(candle) > get_upper_wick(candle)
-
-# def is_validation(candle1, candle2):
-#     # Volume of 2nd and 3rd candle increasing or decreasing in same direction
-#     return (candle2['volume'] > candle1['volume']) or (candle2['volume'] < candle1['volume'])
-
-# def is_anomaly(candle1, candle2):
-#     # Volume of 2nd and 3rd candle is abnormal (one increasing, one decreasing)
-#     return not is_validation(candle1, candle2)
-
-# def predict_next_candle_cwrv(candles):
-#     if len(candles) < 3:
-#         return 'NEUTRAL'  # Need at least 3 candles for most rules
-    
-#     candle1 = candles[-3]  # 3rd last candle
-#     candle2 = candles[-2]  # 2nd last candle
-#     candle3 = candles[-1]  # Last candle (most recent)
-
-#     # # Rule 1: Concept 3 - Opposite Wicks ✅
-#     # if (is_lower_wick_bigger(candle2) and is_upper_wick_bigger(candle3)) or \
-#     #    (is_upper_wick_bigger(candle2) and is_lower_wick_bigger(candle3)):
-#     #     if is_validation(candle2, candle3):
-#     #         return "PUT" if is_bullish(candle3) else "CALL"  # Reversal
-#         # elif is_anomaly(candle2, candle3):
-#         #     return "CALL" if is_bullish(candle3) else "PUT"  # Continuation
-
-#     # # Rule 1: Concept 4 - Opposite Wicks Color Change ✅
-#     if ((is_lower_wick_bigger(candle2) and is_upper_wick_bigger(candle3)) or
-#         (is_upper_wick_bigger(candle2) and is_lower_wick_bigger(candle3))) and \
-#        (is_bullish(candle2) != is_bullish(candle3)):
-#         # if is_validation(candle2, candle3):
-#         #     return "CALL" if is_bullish(candle3) else "PUT"  # Continuation
-#         if is_anomaly(candle2, candle3):
-#             return "PUT" if is_bullish(candle3) else "CALL"  # Reversal
-
-#     return 'NEUTRAL'  # No strategy matched
-
-
-
-#     return '''None'''
-
-
 
 def calculate_candle_properties(candle):
     """Calculate wick lengths, body size, and price action strength."""
@@ -250,25 +138,37 @@ def get_signall():
         print(e)
         return jsonify({"error": "An error occurred", "details": str(e)}), 500
 
-@app.route("/candles", methods=["GET"])
-def get_candles():
-    try:
-        pair = request.args.get("pair", pairs[0])
-        timeframe = int(request.args.get("timeframe", 1))
-        if not pair:
-            return jsonify({"error": "Missing pair parameter"}), 400
+# @app.route("/candles", methods=["GET"])
+# def get_candles():
+#     try:
+#         # Get timeframe parameter, default to 1
+#         timeframe = int(request.args.get("timeframe", 1))
         
-        API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
-        API.connect()
+#         # Get specific pair parameter if it exists
+#         specific_pair = request.args.get("pair", None)
         
-        velas = API.get_candles(pair, (timeframe * 60), 100, time())
-        velas.pop()  # Remove last incomplete candle
+#         API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
+#         API.connect()
         
-        return jsonify({"candles": velas})
+#         result = {}
+        
+#         # If specific pair is requested, return only that pair
+#         if specific_pair:
+#             velas = API.get_candles(specific_pair, (timeframe * 60), 100, time())
+#             velas.pop()  # Remove last incomplete candle
+#             result[specific_pair] = velas
+#         else:
+#             # Get candles for all pairs
+#             for pair in pairs:
+#                 velas = API.get_candles(pair, (timeframe * 60), 100, time())
+#                 velas.pop()  # Remove last incomplete candle
+#                 result[pair] = velas
+        
+#         return jsonify({"candles": result})
     
-    except Exception as e:
-        print(e)
-        return jsonify({"error": "An error occurred", "details": str(e)}), 500
+#     except Exception as e:
+#         print(e)
+#         return jsonify({"error": "An error occurred", "details": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
