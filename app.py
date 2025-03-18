@@ -127,48 +127,48 @@ def analyze_all_signals():
 def home():
     return jsonify({"message": "API is working!"})
 # 
-@app.route("/signal", methods=["GET"])
-def get_signall():
-    try:
-        dir = analyze_all_signals()
-        data={"signal": dir}
-        return jsonify(data)
-    
-    except Exception as e:
-        print(e)
-        return jsonify({"error": "An error occurred", "details": str(e)}), 500
-
-# @app.route("/candles", methods=["GET"])
-# def get_candles():
+# @app.route("/signal", methods=["GET"])
+# def get_signall():
 #     try:
-#         # Get timeframe parameter, default to 1
-#         timeframe = int(request.args.get("timeframe", 1))
-        
-#         # Get specific pair parameter if it exists
-#         specific_pair = request.args.get("pair", None)
-        
-#         API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
-#         API.connect()
-        
-#         result = {}
-        
-#         # If specific pair is requested, return only that pair
-#         if specific_pair:
-#             velas = API.get_candles(specific_pair, (timeframe * 60), 100, time())
-#             velas.pop()  # Remove last incomplete candle
-#             result[specific_pair] = velas
-#         else:
-#             # Get candles for all pairs
-#             for pair in pairs:
-#                 velas = API.get_candles(pair, (timeframe * 60), 100, time())
-#                 velas.pop()  # Remove last incomplete candle
-#                 result[pair] = velas
-        
-#         return jsonify({"candles": result})
+#         dir = analyze_all_signals()
+#         data={"signal": dir}
+#         return jsonify(data)
     
 #     except Exception as e:
 #         print(e)
 #         return jsonify({"error": "An error occurred", "details": str(e)}), 500
+
+@app.route("/candles", methods=["GET"])
+def get_candles():
+    try:
+        # Get timeframe parameter, default to 1
+        timeframe = int(request.args.get("timeframe", 1))
+        
+        # Get specific pair parameter if it exists
+        specific_pair = request.args.get("pair", None)
+        
+        API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
+        API.connect()
+        
+        result = {}
+        
+        # If specific pair is requested, return only that pair
+        if specific_pair:
+            velas = API.get_candles(specific_pair, (timeframe * 60), 100, time())
+            velas.pop()  # Remove last incomplete candle
+            result[specific_pair] = velas
+        else:
+            # Get candles for all pairs
+            for pair in pairs:
+                velas = API.get_candles(pair, (timeframe * 60), 100, time())
+                velas.pop()  # Remove last incomplete candle
+                result[pair] = velas
+        
+        return jsonify({"candles": result})
+    
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "An error occurred", "details": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
