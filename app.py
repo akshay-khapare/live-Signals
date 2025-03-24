@@ -12,7 +12,7 @@ API.connect()
 # velas = API.get_candles('EURUSD', (1 * 60), 5, time())
 print(API.check_connect())
 app = Flask(__name__)
-# CORS(app)  # Enable CORS for all domains
+CORS(app)  # Enable CORS for all domains
 
 
 
